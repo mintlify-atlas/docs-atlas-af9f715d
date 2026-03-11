@@ -1,0 +1,193 @@
+---
+title: 'Data Preparation'
+description: 'Clean and preprocess the dataset for model training'
+---
+
+## Overview
+
+The data preparation pipeline handles missing values, extreme outliers, error strings, and feature engineering. The dataset contains **423 records** with significant data quality issues that need to be addressed.
+
+## Data Quality Issues
+
+The raw dataset contains several challenges:
+
+- **Missing values**: 17-25% missing across features
+- **Error strings**: `#NUM!` errors in numeric columns
+- **Extreme outliers**: Values like `1e111` in height and weight
+- **Negative values**: Impossible values (e.g., negative YouTube subscribers)
+- **Mixed data types**: Numeric columns stored as strings
+
+### Missingness Summary
+
+```
+self_intro     24.59%
+sleepiness     21.51%
+yt             21.28%
+star_sign      20.33%
+weight         20.09%
+iq             18.68%
+phone_os       18.44%
+fb_friends     18.20%
+height         17.49%
+```
+
+## Data Cleaning Process
+
+The `clean_data()` function in `data_pipeline.py:9-38` handles all data cleaning:
+
+### 1. Handle Error Strings and Convert to Numeric
+
+```python data_pipeline.py
+def clean_data(df):
+    """
+    Cleans raw data by handling extreme outliers and specific string errors.
+    """
+    df = df.copy()
+    
+    # List of numeric columns
+    numeric_cols = ['height', 'weight', 'sleepiness', 'iq', 'fb_friends', 'yt']
+    
+    for col in numeric_cols:
+        # Convert to numeric, turn errors like #NUM! or non-numeric strings to NaN
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+```
+
+<Note>
+  The `errors='coerce'` parameter converts any non-numeric values (including `#NUM!` errors) to `NaN`, which are handled later by the imputation strategy.
+</Note>
+
+### 2. Remove Extreme Outliers
+
+Extreme values beyond reasonable thresholds are replaced with `NaN`:
+
+```python data_pipeline.py
+        # Replace extreme outliers/infinity with NaN before scaling
+        # float32 max is ~3.4e38, so we use a much safer threshold
+        df.loc[df[col] > 1e12, col] = np.nan
+        df.loc[df[col] < -1e12, col] = np.nan
+```
+
+### 3. Domain-Specific Outlier Handling
+
+Apply business logic rules for each feature:
+
+```python data_pipeline.py
+        # Specific business logic outlier handling
+        if col == 'height':
+            df.loc[(df[col] < 100) | (df[col] > 250), col] = np.nan
+        elif col == 'weight':
+            df.loc[(df[col] < 30) | (df[col] > 200), col] = np.nan
+        elif col == 'yt':
+            df.loc[df[col] < 0, col] = np.nan
+```
+
+**Rationale:**
+- **Height**: Valid range 100-250 cm
+- **Weight**: Valid range 30-200 kg
+- **YouTube subscribers**: Cannot be negative
+
+### 4. Feature Engineering
+
+Create derived features that may improve model performance:
+
+```python data_pipeline.py
+    # Feature Engineering: length of self-intro
+    df['self_intro_len'] = df['self_intro'].fillna('').astype(str).apply(len)
+    
+    return df
+```
+
+The `self_intro_len` feature captures the length of the user's self-introduction text, which may correlate with gender.
+
+## Preprocessing Pipeline
+
+After cleaning, features are preprocessed using scikit-learn pipelines:
+
+### Numeric Features
+
+```python data_pipeline.py
+numeric_features = ['height', 'weight', 'sleepiness', 'iq', 'fb_friends', 'yt', 'self_intro_len']
+
+numeric_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())
+])
+```
+
+- **Imputation**: Missing values filled with median (robust to outliers)
+- **Scaling**: Standardization (mean=0, std=1) for algorithm compatibility
+
+### Categorical Features
+
+```python data_pipeline.py
+categorical_features = ['star_sign', 'phone_os']
+
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='constant', fill_value='Unknown')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore'))
+])
+```
+
+- **Imputation**: Missing values filled with 'Unknown'
+- **Encoding**: One-hot encoding with unknown category handling
+
+### Combined Preprocessor
+
+```python data_pipeline.py
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, numeric_features),
+        ('cat', categorical_transformer, categorical_features)
+    ]
+)
+```
+
+## Train/Test Split Strategy
+
+The data is split with stratification to preserve class balance:
+
+```python train_model.py
+X = df.drop('gender', axis=1)
+y = df['gender'].map({1: 0, 2: 1})  # Mapping 1 to 0 (Male), 2 to 1 (Female) for models
+
+# Split data
+X_train, X_val, y_train, y_val = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+```
+
+**Key parameters:**
+- **test_size=0.2**: 80% training, 20% validation
+- **random_state=42**: Reproducibility
+- **stratify=y**: Maintains class distribution (important for imbalanced data)
+
+<Warning>
+  The dataset has class imbalance with 316 males (74.7%) vs 107 females (25.3%). Stratification ensures both splits have similar proportions.
+</Warning>
+
+## Usage Example
+
+Test the data pipeline independently:
+
+```python
+from data_pipeline import clean_data, get_preprocessing_pipeline
+import pandas as pd
+
+# Load raw data
+df = pd.read_csv("data/boy-or-girl-2025-train-missingValue.csv")
+
+# Clean data
+cleaned_df = clean_data(df)
+print("Cleaned data shape:", cleaned_df.shape)
+print("Missing values:\n", cleaned_df.isnull().sum())
+
+# Preprocess features
+X = cleaned_df.drop('gender', axis=1)
+preprocessor = get_preprocessing_pipeline()
+X_processed = preprocessor.fit_transform(X)
+print("Preprocessed features shape:", X_processed.shape)
+```
+
+## Next Steps
+
+With cleaned and preprocessed data, you're ready to proceed to [Model Training](/training/model-training).

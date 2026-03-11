@@ -1,0 +1,200 @@
+---
+title: 'Creating Submissions'
+description: 'Generate Kaggle-ready submission files with proper formatting'
+---
+
+## Overview
+
+After generating predictions, you need to format them into a CSV file that meets Kaggle's submission requirements. The submission file must have the correct column names, ID ordering, and label encoding.
+
+## Submission File Format
+
+The Kaggle competition requires a CSV file with exactly two columns:
+
+```csv
+id,gender
+1,1
+2,2
+3,1
+4,2
+...
+```
+
+- **id**: The unique identifier for each test sample (must match test data IDs)
+- **gender**: The predicted gender label (`1` for Male, `2` for Female)
+
+<Warning>
+The submission file must not have an index column. Use `index=False` when saving with pandas.
+</Warning>
+
+## Creating the Submission File
+
+The `predict()` function in `predict.py` handles the complete submission file creation:
+
+```python
+import pandas as pd
+import os
+import joblib
+from data_pipeline import clean_data
+
+def predict():
+    # Load model and preprocessor
+    model = joblib.load(os.path.join(root_dir, "best_model.joblib"))
+    preprocessor = joblib.load(os.path.join(root_dir, "preprocessor.joblib"))
+    
+    # Load test data
+    test_df = pd.read_csv(test_data_path)
+    ids = test_df['id']
+    
+    # Process test data
+    X_test = clean_data(test_df)
+    X_test = X_test.drop('gender', axis=1, errors='ignore')
+    
+    # Transform and predict
+    X_test_processed = preprocessor.transform(X_test)
+    preds = model.predict(X_test_processed)
+    
+    # Map back to original gender labels (0 -> 1, 1 -> 2)
+    final_preds = [1 if p == 0 else 2 for p in preds]
+    
+    # Create submission DataFrame
+    submission = pd.DataFrame({
+        'id': ids,
+        'gender': final_preds
+    })
+    
+    # Save to CSV
+    output_path = os.path.join(root_dir, "submission.csv")
+    submission.to_csv(output_path, index=False)
+    print(f"Predictions saved to {output_path}")
+```
+
+## Submission Workflow
+
+<Steps>
+  <Step title="Run the prediction script">
+    Execute the full prediction pipeline:
+
+    ```bash
+    python predict.py
+    ```
+  </Step>
+
+  <Step title="Verify submission format">
+    Check that your submission file has the correct structure:
+
+    ```python
+    import pandas as pd
+    
+    submission = pd.read_csv("submission.csv")
+    print(submission.head())
+    print(f"Shape: {submission.shape}")
+    print(f"Columns: {submission.columns.tolist()}")
+    print(f"Gender values: {submission['gender'].unique()}")
+    ```
+
+    Expected output:
+    ```
+       id  gender
+    0   1       1
+    1   2       2
+    2   3       1
+    3   4       2
+    4   5       1
+    Shape: (n_samples, 2)
+    Columns: ['id', 'gender']
+    Gender values: [1 2]
+    ```
+  </Step>
+
+  <Step title="Validate predictions">
+    Perform sanity checks before submitting:
+
+    ```python
+    # Check for missing values
+    assert submission.isnull().sum().sum() == 0, "Found missing values"
+    
+    # Check gender labels are valid
+    assert set(submission['gender'].unique()).issubset({1, 2}), "Invalid gender labels"
+    
+    # Check ID count matches test set
+    assert len(submission) == len(test_df), "ID count mismatch"
+    
+    print("Submission validation passed!")
+    ```
+  </Step>
+
+  <Step title="Submit to Kaggle">
+    Upload the `submission.csv` file to the Kaggle competition page or use the Kaggle API:
+
+    ```bash
+    kaggle competitions submit -c boy-or-girl-2025 -f submission.csv -m "Initial submission"
+    ```
+  </Step>
+</Steps>
+
+## Common Mistakes to Avoid
+
+<Warning>
+**Index Column**: Never include the DataFrame index in the submission file. Always use `to_csv(index=False)`.
+</Warning>
+
+<Warning>
+**Wrong Label Mapping**: The model outputs `0` and `1`, but Kaggle expects `1` and `2`. Missing this mapping will result in incorrect predictions.
+</Warning>
+
+<Warning>
+**Mismatched IDs**: Ensure the IDs in your submission match exactly with the test data IDs. The order must be preserved.
+</Warning>
+
+<Warning>
+**Missing Predictions**: Check that you have predictions for all test samples. Missing rows will cause submission errors.
+</Warning>
+
+## Submission Validation Checklist
+
+Before submitting to Kaggle, verify:
+
+- [ ] File has exactly 2 columns: `id` and `gender`
+- [ ] No index column is present
+- [ ] Gender values are only `1` or `2`
+- [ ] Number of rows matches test set size
+- [ ] No missing values (NaN)
+- [ ] IDs match the test data exactly
+- [ ] File is saved as CSV format
+
+## Example Submission File
+
+Here's what a properly formatted submission file looks like:
+
+```csv
+id,gender
+1,1
+2,2
+3,1
+4,2
+5,1
+6,2
+7,1
+8,2
+9,1
+10,2
+```
+
+<Tip>
+Review the sample submission file provided by Kaggle (`boy-or-girl-kaggle-sample-submission.csv`) to ensure your format matches exactly.
+</Tip>
+
+## Improving Your Submission
+
+After your first submission:
+
+1. **Check leaderboard score**: Compare against baseline models
+2. **Analyze errors**: If possible, look for patterns in misclassifications
+3. **Iterate on features**: Add or remove features based on model performance
+4. **Tune hyperparameters**: Use GridSearchCV or RandomizedSearchCV
+5. **Try ensemble methods**: Combine predictions from multiple models
+
+<Tip>
+Keep track of which model version and hyperparameters produced each submission for reproducibility.
+</Tip>

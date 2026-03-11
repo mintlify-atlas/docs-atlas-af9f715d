@@ -1,0 +1,432 @@
+---
+title: 'Model Trainer Skill'
+description: 'Expert in hyperparameter optimization and model selection'
+---
+
+## Overview
+
+**Name**: `ml-model-trainer`  
+**Risk Level**: High  
+**Version**: 1.0.0
+
+The Model Trainer skill is an expert in hyperparameter optimization and model selection. It specializes in Optuna studies, Ray Tune, cross-validation setups, and systematic model improvement.
+
+<Warning>
+  **High Risk**: Hyperparameter tuning can be resource-intensive and time-consuming. Always set reasonable trial limits and timeout constraints.
+</Warning>
+
+## When to Use This Skill
+
+Invoke `@ml-model-trainer` when you need:
+
+- Hyperparameter optimization (HPO)
+- Bayesian optimization studies
+- Cross-validation setup
+- Model selection experiments
+- Ensemble model creation
+- Grid/Random search alternatives
+- Early stopping strategies
+- Experiment tracking and logging
+
+## Model Tuning Protocol
+
+### 1. Search Space Definition
+
+Define **explicit ranges** for all hyperparameters using appropriate distributions:
+
+```python
+import optuna
+
+def objective(trial):
+    # Continuous parameters (log scale for learning rate)
+    learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True)
+    
+    # Integer parameters
+    max_depth = trial.suggest_int("max_depth", 3, 10)
+    n_estimators = trial.suggest_int("n_estimators", 50, 500)
+    
+    # Categorical parameters
+    booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
+    
+    # Model training with suggested params
+    model = xgb.XGBClassifier(
+        learning_rate=learning_rate,
+        max_depth=max_depth,
+        n_estimators=n_estimators,
+        booster=booster
+    )
+    
+    # Return metric to optimize
+    return score
+```
+
+<Note>
+  Use `log=True` for learning rates and regularization parameters that span multiple orders of magnitude.
+</Note>
+
+### 2. Pruning Strategy
+
+**Always implement an Optuna pruner** to kill underperforming trials early and save compute.
+
+```python
+import optuna
+from optuna.pruners import MedianPruner
+
+study = optuna.create_study(
+    direction="maximize",
+    pruner=MedianPruner(
+        n_startup_trials=5,  # Don't prune first 5 trials
+        n_warmup_steps=10     # Wait 10 steps before pruning
+    )
+)
+```
+
+**Available Pruners**:
+- **MedianPruner**: Prune if trial is worse than median of previous trials
+- **HyperbandPruner**: Successive halving algorithm
+- **PercentilePruner**: Prune bottom X% of trials
+
+<Tip>
+  MedianPruner is a good default choice. It's aggressive enough to save compute but not so aggressive that it prunes promising trials.
+</Tip>
+
+### 3. Reproducibility
+
+**Fix the seed** for both the Sampler and the Model:
+
+```python
+import optuna
+import numpy as np
+import random
+
+# Set global seeds
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+
+# Create study with seeded sampler
+sampler = optuna.samplers.TPESampler(seed=SEED)
+study = optuna.create_study(sampler=sampler)
+
+# Use seed in model
+model = xgb.XGBClassifier(random_state=SEED)
+```
+
+<Note>
+  Reproducibility is critical for debugging and comparing runs. Always set seeds.
+</Note>
+
+### 4. Logging
+
+Integrate **MLflow** or a local `trials.csv` logger to track every iteration's parameters and metrics.
+
+```python
+import optuna
+import mlflow
+
+def objective(trial):
+    # ... parameter suggestions ...
+    
+    # Log parameters to MLflow
+    with mlflow.start_run():
+        mlflow.log_params({
+            "learning_rate": learning_rate,
+            "max_depth": max_depth,
+            "n_estimators": n_estimators
+        })
+        
+        # Train and evaluate
+        score = cross_val_score(model, X, y, cv=5).mean()
+        
+        mlflow.log_metric("cv_score", score)
+        
+    return score
+```
+
+**Alternative: Local CSV Logging**
+
+```python
+import pandas as pd
+
+def log_trial(trial_number, params, score):
+    log_df = pd.DataFrame([{
+        'trial': trial_number,
+        **params,
+        'score': score
+    }])
+    log_df.to_csv('trials.csv', mode='a', header=False, index=False)
+```
+
+### 5. Evaluation Strategy
+
+Use **Stratified K-Fold cross-validation** for imbalanced datasets:
+
+```python
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import f1_score
+
+def objective(trial):
+    # ... parameter suggestions ...
+    
+    # Stratified K-Fold for imbalanced data
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    
+    scores = []
+    for train_idx, val_idx in skf.split(X, y):
+        X_train, X_val = X[train_idx], X[val_idx]
+        y_train, y_val = y[train_idx], y[val_idx]
+        
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_val)
+        score = f1_score(y_val, y_pred, average='macro')
+        scores.append(score)
+        
+        # Report intermediate value for pruning
+        trial.report(score, len(scores))
+        
+        if trial.should_prune():
+            raise optuna.TrialPruned()
+    
+    return np.mean(scores)
+```
+
+## Constraints
+
+### Trial Limits
+
+**Never run more than 100 trials** without checking in with the user on "Time vs. Accuracy" trade-offs.
+
+```python
+# Good: Set reasonable limit
+study.optimize(objective, n_trials=50, timeout=3600)  # 50 trials or 1 hour
+
+# Bad: Open-ended optimization
+study.optimize(objective)  # Could run forever
+```
+
+### Avoid Grid Search for Complex Spaces
+
+**Do not suggest `GridSearchCV`** for spaces with >3 parameters; insist on Bayesian methods.
+
+**Why**: Grid search grows exponentially:
+- 3 parameters × 10 values each = 1,000 combinations
+- 5 parameters × 10 values each = 100,000 combinations
+
+Bayesian optimization (Optuna, Ray Tune) intelligently explores the space.
+
+## Example Invocations
+
+### Basic Optimization
+
+```
+@ml-model-trainer tune the XGBoost model with 50 trials using F1 score
+```
+
+### Specific Configuration
+
+```
+@ml-model-trainer apply hyperparameter optimization to the model in train.py. 
+Aim for 50 trials using the 'f1-macro' metric.
+```
+
+### With Constraints
+
+```
+@ml-model-trainer optimize the RandomForest with a 30-minute timeout, 
+using stratified k-fold validation
+```
+
+### Multi-Metric
+
+```
+@ml-model-trainer tune for best F1 score while keeping precision above 0.8
+```
+
+## Best Practices
+
+<Tip>
+  **Start Small**: Begin with 10-20 trials to verify your setup works, then scale up.
+</Tip>
+
+<Tip>
+  **Monitor Early**: Check results after the first few trials. If scores are terrible, there might be a bug.
+</Tip>
+
+<Tip>
+  **Use Warm Start**: If continuing optimization, load previous study instead of starting fresh.
+</Tip>
+
+```python
+# Load existing study
+study = optuna.load_study(
+    study_name="xgboost_optimization",
+    storage="sqlite:///optuna.db"
+)
+
+# Continue optimization
+study.optimize(objective, n_trials=50)
+```
+
+<Warning>
+  Don't optimize too many hyperparameters at once. Start with the most important ones (learning_rate, max_depth) and add others gradually.
+</Warning>
+
+<Warning>
+  Be careful with cross-validation folds. Too few folds (k=2) gives unreliable estimates. Too many folds (k=20) is computationally expensive.
+</Warning>
+
+## Complete Example
+
+```python
+import optuna
+from optuna.pruners import MedianPruner
+import xgboost as xgb
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import f1_score
+import numpy as np
+import pandas as pd
+
+# Load data
+X = pd.read_csv('features.csv')
+y = pd.read_csv('target.csv')
+
+# Define objective
+def objective(trial):
+    # Suggest hyperparameters
+    params = {
+        'learning_rate': trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True),
+        'max_depth': trial.suggest_int('max_depth', 3, 10),
+        'n_estimators': trial.suggest_int('n_estimators', 50, 500),
+        'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
+        'subsample': trial.suggest_float('subsample', 0.6, 1.0),
+        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
+        'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 10.0, log=True),
+        'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 10.0, log=True),
+        'random_state': 42
+    }
+    
+    # Stratified K-Fold
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    scores = []
+    
+    for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+        X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+        
+        # Train model
+        model = xgb.XGBClassifier(**params)
+        model.fit(X_train, y_train)
+        
+        # Evaluate
+        y_pred = model.predict(X_val)
+        score = f1_score(y_val, y_pred, average='macro')
+        scores.append(score)
+        
+        # Report for pruning
+        trial.report(score, fold)
+        if trial.should_prune():
+            raise optuna.TrialPruned()
+    
+    return np.mean(scores)
+
+# Create study
+study = optuna.create_study(
+    direction='maximize',
+    pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=2),
+    sampler=optuna.samplers.TPESampler(seed=42)
+)
+
+# Optimize
+study.optimize(objective, n_trials=50, timeout=3600)
+
+# Results
+print(f"Best F1 Score: {study.best_value:.4f}")
+print(f"Best Parameters: {study.best_params}")
+
+# Train final model with best params
+best_model = xgb.XGBClassifier(**study.best_params)
+best_model.fit(X, y)
+```
+
+## Visualization
+
+```python
+import optuna
+
+# Optimization history
+optuna.visualization.plot_optimization_history(study).show()
+
+# Parameter importance
+optuna.visualization.plot_param_importances(study).show()
+
+# Slice plot (parameter relationships)
+optuna.visualization.plot_slice(study).show()
+
+# Parallel coordinate plot
+optuna.visualization.plot_parallel_coordinate(study).show()
+```
+
+## Integration with Implementation Playbook
+
+The Model Trainer skill follows [Implementation Playbook](/skills/implementation-playbook) standards:
+
+- **Reproducibility**: Seeds are set for numpy, random, and model
+- **Logging**: All experiments tracked in MLflow or CSV
+- **Evaluation**: Proper cross-validation for reliable estimates
+- **Baselines**: Compare optimized model to baseline
+
+## Common Pitfalls
+
+### Overfitting to Validation Set
+
+```python
+# Bad: Using same validation set for all trials
+X_train, X_val, y_train, y_val = train_test_split(X, y)
+
+def objective(trial):
+    model.fit(X_train, y_train)
+    return model.score(X_val, y_val)  # Same val set every time
+
+# Good: Cross-validation
+def objective(trial):
+    return cross_val_score(model, X, y, cv=5).mean()
+```
+
+### Not Pruning
+
+```python
+# Bad: Let bad trials run to completion
+study = optuna.create_study()  # No pruner
+
+# Good: Prune bad trials early
+study = optuna.create_study(
+    pruner=MedianPruner()
+)
+```
+
+### Ignoring Compute Constraints
+
+```python
+# Bad: No timeout or trial limit
+study.optimize(objective)  # Could run for days
+
+# Good: Set reasonable limits
+study.optimize(objective, n_trials=50, timeout=3600)
+```
+
+## Key Constraints
+
+- Must define explicit hyperparameter ranges
+- Must implement pruning (MedianPruner recommended)
+- Must fix seeds for reproducibility
+- Must log experiments (MLflow or CSV)
+- Must use stratified K-fold for imbalanced data
+- Must check with user before exceeding 100 trials
+- Must avoid GridSearchCV for >3 parameters
+
+## Related Skills
+
+- [Data Scientist](/skills/data-scientist) - Defines the optimization objective
+- [ML Engineer](/skills/ml-engineer) - Deploys the optimized model
+- [Implementation Playbook](/skills/implementation-playbook) - Standards for experiment tracking
+- [Model Pipeline](/skills/model-pipeline) - See optimization in full workflow

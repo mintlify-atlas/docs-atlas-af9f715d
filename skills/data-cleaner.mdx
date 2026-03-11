@@ -1,0 +1,264 @@
+---
+title: 'Data Cleaner Skill'
+description: 'Specialized skill for data auditing, cleaning, and preprocessing'
+---
+
+## Overview
+
+**Name**: `ds-data-cleaner`  
+**Risk Level**: Medium  
+**Version**: 1.0.0
+
+The Data Cleaner skill specializes in data auditing, cleaning, and preprocessing. Use this skill for missing value handling, outlier detection, feature encoding, and ensuring data quality before model training.
+
+<Note>
+  Every cleaning operation includes validation checks to ensure data integrity is maintained.
+</Note>
+
+## When to Use This Skill
+
+Invoke `@ds-data-cleaner` when you need:
+
+- Initial data auditing and profiling
+- Missing value detection and handling
+- Outlier identification and treatment
+- Feature encoding (categorical to numerical)
+- Data type standardization
+- Column name normalization
+- Schema validation
+- Data quality reports
+
+## Data Cleaning Protocol
+
+### 1. Initial Audit
+
+Before modifying any data, the skill runs a comprehensive audit:
+
+- `df.info()` for data types and null counts
+- `df.describe()` for statistical summaries
+- Generates a summary artifact documenting:
+  - Null counts per column
+  - Data types
+  - Basic statistics
+  - Potential issues
+
+**Purpose**: Establish a baseline understanding before making changes.
+
+### 2. Handling Missing Values
+
+The skill follows domain-specific strategies:
+
+#### For Categorical Variables:
+- **Default**: Fill with "Unknown" or Mode
+- **Reasoning**: Preserves the observation while indicating missing information
+
+#### For Numerical Variables:
+- **Check Skewness First**: Use `df['col'].skew()`
+- **Skewed Data** (|skew| > 1): Use **Median** (robust to outliers)
+- **Normal Distribution** (|skew| ≤ 1): Use **Mean**
+
+<Tip>
+  The median is preferred for skewed distributions because it's not affected by extreme values, while the mean works well for normally distributed data.
+</Tip>
+
+### 3. Outlier Strategy
+
+Outlier detection uses the **IQR (Interquartile Range) method**:
+
+```python
+Q1 = df['col'].quantile(0.25)
+Q3 = df['col'].quantile(0.75)
+IQR = Q3 - Q1
+lower_bound = Q1 - 1.5 * IQR
+upper_bound = Q3 + 1.5 * IQR
+```
+
+**Treatment Philosophy**:
+- **Do NOT drop outliers** unless they are clearly sensor errors or data entry mistakes
+- **Prefer transformation methods**:
+  - **Winsorization**: Cap extreme values at percentiles
+  - **Log-transformation**: For right-skewed distributions
+  - **Box-Cox transformation**: For non-normal distributions
+
+<Warning>
+  Dropping outliers can remove valuable information. Always investigate why outliers exist before removing them.
+</Warning>
+
+### 4. Consistency Standards
+
+#### Column Names:
+- Standardize to `snake_case` (lowercase with underscores)
+- Remove special characters
+- Make names descriptive
+
+**Example**:
+- `Favorite Color` → `favorite_color`
+- `Hair-Length (cm)` → `hair_length_cm`
+
+#### Date Handling:
+- Convert all date columns to `datetime64` objects
+- Extract useful features (year, month, day of week) if needed
+- Ensure timezone consistency
+
+### 5. Validation
+
+**Critical**: Every cleaning script must end with assertion checks to verify the cleaning worked correctly.
+
+```python
+# Verify no missing values in critical columns
+assert df['age'].isnull().sum() == 0, "Age column still has missing values"
+
+# Verify data types
+assert df['date'].dtype == 'datetime64[ns]', "Date column is not datetime type"
+
+# Verify value ranges
+assert df['age'].min() >= 0, "Age has negative values"
+assert df['age'].max() <= 120, "Age has unrealistic values"
+```
+
+## Tools & Libraries
+
+### Primary Tools:
+- **pandas**: Standard data manipulation
+- **numpy**: Numerical operations
+- **polars**: High-performance alternative to pandas for large datasets
+
+### Visualization:
+- **missingno**: Visualize null value patterns
+- **seaborn**: Distribution plots and correlation heatmaps
+
+<Tip>
+  Use `missingno` to quickly identify patterns in missing data - sometimes missingness itself is informative!
+</Tip>
+
+## Example Invocations
+
+### Basic Audit
+
+```
+@ds-data-cleaner audit the train.csv dataset and provide a summary report
+```
+
+### Specific Cleaning Task
+
+```
+@ds-data-cleaner audit raw_leads.csv and suggest a strategy for the 15% 
+missing 'Phone' values
+```
+
+### Full Preprocessing Pipeline
+
+```
+@ds-data-cleaner create a complete preprocessing pipeline for the Boy or Girl 
+dataset including missing value handling, outlier treatment, and feature encoding
+```
+
+### Validation Request
+
+```
+@ds-data-cleaner verify the cleaned_data.csv meets all quality standards 
+and add appropriate assertion checks
+```
+
+## Example Workflow
+
+1. **Initial Audit**:
+   ```
+   @ds-data-cleaner audit data/raw/train.csv
+   ```
+   Output: Summary of nulls, data types, distributions
+
+2. **Review Recommendations**:
+   The skill provides a cleaning strategy based on the audit
+
+3. **Generate Cleaning Script**:
+   ```
+   @ds-data-cleaner implement the recommended cleaning strategy
+   ```
+
+4. **Validate Results**:
+   ```
+   @ds-data-cleaner add validation checks to ensure data quality
+   ```
+
+## Best Practices
+
+<Tip>
+  **Never Overwrite Raw Data**: Always save cleaned data to a new file (e.g., `data/processed/train_cleaned.csv`). Keep raw data immutable.
+</Tip>
+
+<Tip>
+  **Document Decisions**: Include comments explaining why specific cleaning choices were made (e.g., "Using median because hair_length is right-skewed with skew=2.3").
+</Tip>
+
+<Tip>
+  **Version Your Data**: Use versioning for processed datasets (e.g., `v1.parquet`, `v2.parquet`) so you can track changes.
+</Tip>
+
+<Warning>
+  Be cautious with automated cleaning. Always review the cleaning strategy before applying it to ensure it makes domain sense.
+</Warning>
+
+## Integration with Implementation Playbook
+
+The Data Cleaner skill follows the [Implementation Playbook](/skills/implementation-playbook) standards:
+
+- **Data Integrity**: Never overwrites raw data
+- **Validation**: Uses assertions or `pandera` for schema validation
+- **Efficiency**: Prefers vectorized operations over loops
+- **Documentation**: Includes docstrings and comments
+
+## Common Patterns
+
+### Missing Value Heatmap
+
+```python
+import missingno as msno
+import matplotlib.pyplot as plt
+
+msno.matrix(df)
+plt.savefig('missing_values.png')
+```
+
+### Outlier Detection
+
+```python
+def detect_outliers_iqr(df, column):
+    Q1 = df[column].quantile(0.25)
+    Q3 = df[column].quantile(0.75)
+    IQR = Q3 - Q1
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
+    return df[(df[column] < lower) | (df[column] > upper)]
+```
+
+### Smart Missing Value Imputation
+
+```python
+from scipy import stats
+
+def smart_impute(df, column):
+    if df[column].dtype == 'object':
+        return df[column].fillna('Unknown')
+    else:
+        skewness = df[column].skew()
+        if abs(skewness) > 1:
+            return df[column].fillna(df[column].median())
+        else:
+            return df[column].fillna(df[column].mean())
+```
+
+## Key Constraints
+
+- Must perform initial audit before cleaning
+- Must include validation assertions
+- Must preserve raw data (never overwrite)
+- Must standardize column names to snake_case
+- Must document cleaning decisions
+- Must use appropriate statistical methods (median vs mean based on distribution)
+
+## Related Skills
+
+- [Data Scientist](/skills/data-scientist) - Orchestrates the cleaning workflow
+- [Implementation Playbook](/skills/implementation-playbook) - Engineering standards
+- [Model Pipeline](/skills/model-pipeline) - See how cleaning fits in the full workflow

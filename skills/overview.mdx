@@ -1,0 +1,101 @@
+---
+title: 'Skills Overview'
+description: 'Understanding the agent-based workflow system in Boy or Girl Predictor'
+---
+
+<Warning>
+  **AI-Generated Code Disclaimer**: The files in this project were created by AI and may contain mistakes, errors, or bad practices. The files are provided on an as-is basis and do not come with warranties. You use them at your own risk.
+</Warning>
+
+## What are Skills?
+
+The Boy or Girl Predictor project uses **Google Antigravity's agent-based workflow system**. Skills are specialized AI agents that focus on specific aspects of the data science and machine learning pipeline. Each skill has domain expertise and follows best practices for its particular area.
+
+Instead of writing all code yourself, you orchestrate these specialized agents by invoking them with the `@` prefix (e.g., `@data-scientist`, `@ml-model-trainer`).
+
+## Core Concept
+
+The agent-based workflow breaks down complex ML projects into specialized roles:
+
+- **Separation of Concerns**: Each skill focuses on one aspect of the ML pipeline
+- **Best Practices Embedded**: Skills follow industry standards and engineering principles
+- **Orchestration**: You combine skills to build complete workflows
+- **Consistency**: Skills reference the Implementation Playbook for production-grade code
+
+## How to Invoke Skills
+
+To use a skill, simply mention it with the `@` prefix in your prompt:
+
+```
+@data-scientist create a baseline model for gender prediction
+```
+
+```
+@ds-data-cleaner audit the training dataset for missing values
+```
+
+```
+@ml-model-trainer tune XGBoost hyperparameters with 50 trials
+```
+
+You can also chain skills together:
+
+```
+First use @ds-data-cleaner to audit the data, then @data-scientist to build a baseline
+```
+
+## Available Skills
+
+<CardGroup cols={2}>
+  <Card title="Data Scientist" icon="flask" href="/skills/data-scientist">
+    Lead architect for experimental design, metric selection, and workflow orchestration
+  </Card>
+  
+  <Card title="Data Cleaner" icon="broom" href="/skills/data-cleaner">
+    Specialized in data auditing, cleaning, preprocessing, and missing value handling
+  </Card>
+  
+  <Card title="Researcher" icon="magnifying-glass" href="/skills/researcher">
+    SOTA research, ArXiv paper summaries, and library documentation expert
+  </Card>
+  
+  <Card title="ML Engineer" icon="gears" href="/skills/ml-engineer">
+    Focuses on Dockerization, API wrapping, and model monitoring
+  </Card>
+  
+  <Card title="Model Trainer" icon="chart-line" href="/skills/model-trainer">
+    Expert in hyperparameter optimization, model selection, and cross-validation
+  </Card>
+  
+  <Card title="Implementation Playbook" icon="book" href="/skills/implementation-playbook">
+    Engineering standards and best practices for production-grade ML code
+  </Card>
+</CardGroup>
+
+## Workflow Resources
+
+<Card title="Model Pipeline" icon="diagram-project" href="/skills/model-pipeline">
+  End-to-end ML pipeline workflow showing how skills work together
+</Card>
+
+## Risk Levels
+
+Each skill has an associated risk level:
+
+- **Medium Risk**: Skills that modify data or create experimental code (`@data-scientist`, `@ds-data-cleaner`)
+- **High Risk**: Skills that affect production systems or resource-intensive operations (`@ml-engineer`, `@ml-model-trainer`)
+- **Unknown Risk**: Skills that interact with external resources (`@ds-researcher`)
+
+<Tip>
+  Always review generated code before running it, especially for high-risk operations like hyperparameter tuning or deployment.
+</Tip>
+
+## Getting Started
+
+1. Start with `@ds-data-cleaner` to audit your data
+2. Use `@data-scientist` to establish a baseline model
+3. Apply `@ml-model-trainer` for optimization
+4. Reference `@implementation-playbook` for production standards
+5. Deploy with `@ml-engineer` when ready
+
+For a complete example, see the [Model Pipeline](/skills/model-pipeline) workflow.

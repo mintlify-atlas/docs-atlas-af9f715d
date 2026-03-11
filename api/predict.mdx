@@ -1,0 +1,364 @@
+---
+title: 'Predict'
+description: 'Make predictions using the trained Boy or Girl Predictor model'
+---
+
+## Overview
+
+The prediction module loads a trained model and preprocessor, processes test data, generates predictions, and creates a submission file in the required format.
+
+## Function
+
+### predict()
+
+Loads the trained model and generates predictions for test data.
+
+```python
+def predict() -> None
+```
+
+The function performs the complete inference pipeline including model loading, data preprocessing, prediction, and submission file creation.
+
+#### Prediction Pipeline
+
+1. **Model Loading**
+   - Loads `best_model.joblib` - the trained classifier
+   - Loads `preprocessor.joblib` - the fitted preprocessing pipeline
+
+2. **Data Loading**
+   - Reads test data CSV
+   - Extracts `id` column for submission file
+
+3. **Data Preprocessing**
+   - Applies `clean_data()` function
+   - Removes `gender` column (not present in test data)
+   - Transforms data using fitted preprocessor
+
+4. **Prediction**
+   - Generates predictions using the trained model
+   - Maps predictions back to original labels: `0 → 1` (Male), `1 → 2` (Female)
+
+5. **Submission Creation**
+   - Creates DataFrame with `id` and `gender` columns
+   - Saves to `submission.csv`
+
+## Implementation
+
+<Expandable title="Complete predict() function source code">
+
+```python
+def predict():
+    # Load model and preprocessor
+    model = joblib.load(os.path.join(root_dir, "best_model.joblib"))
+    preprocessor = joblib.load(os.path.join(root_dir, "preprocessor.joblib"))
+    
+    # Load test data
+    test_df = pd.read_csv(test_data_path)
+    ids = test_df['id']
+    
+    # Process test data (note: gender is missing or zero/null in test set)
+    X_test = clean_data(test_df)
+    X_test = X_test.drop('gender', axis=1, errors='ignore')
+    
+    # Transform
+    X_test_processed = preprocessor.transform(X_test)
+    
+    # Predict
+    preds = model.predict(X_test_processed)
+    # Map back to original gender labels (0 -> 1, 1 -> 2)
+    final_preds = [1 if p == 0 else 2 for p in preds]
+    
+    # Create submission
+    submission = pd.DataFrame({
+        'id': ids,
+        'gender': final_preds
+    })
+    
+    output_path = os.path.join(root_dir, "submission.csv")
+    submission.to_csv(output_path, index=False)
+    print(f"Predictions saved to {output_path}")
+```
+
+</Expandable>
+
+## Loading Models
+
+Models and preprocessors are loaded using joblib:
+
+```python
+import joblib
+import os
+
+# Define paths
+root_dir = "/home/gk/github/gk-work/DSML/IM5033-boy-or-girl-2026"
+model_path = os.path.join(root_dir, "best_model.joblib")
+preprocessor_path = os.path.join(root_dir, "preprocessor.joblib")
+
+# Load artifacts
+model = joblib.load(model_path)
+preprocessor = joblib.load(preprocessor_path)
+```
+
+<ParamField path="best_model.joblib" type="file" required>
+  Trained classifier model saved during training (LogisticRegression, RandomForest, or XGBoost)
+</ParamField>
+
+<ParamField path="preprocessor.joblib" type="file" required>
+  Fitted ColumnTransformer for data preprocessing
+</ParamField>
+
+## Test Data Format
+
+The test data CSV should contain the same columns as training data (except `gender`):
+
+**Required Columns:**
+- `id` - Unique identifier for each sample
+- `height` - Height in cm
+- `weight` - Weight in kg
+- `sleepiness` - Sleepiness score
+- `iq` - IQ score
+- `fb_friends` - Number of Facebook friends
+- `yt` - YouTube-related metric
+- `star_sign` - Astrological star sign
+- `phone_os` - Phone operating system
+- `self_intro` - Self-introduction text
+
+**Notes:**
+- Missing values are handled automatically by the preprocessing pipeline
+- The `gender` column may be absent or contain null/zero values in test data
+
+## Submission CSV Format
+
+The generated `submission.csv` follows this format:
+
+```csv
+id,gender
+1,1
+2,2
+3,1
+4,2
+5,1
+...
+```
+
+<ResponseField name="id" type="int">
+  Unique identifier from the test dataset
+</ResponseField>
+
+<ResponseField name="gender" type="int">
+  Predicted gender label:
+  - `1` = Male
+  - `2` = Female
+</ResponseField>
+
+## Usage Examples
+
+<CodeGroup>
+
+```python Basic Usage
+from predict import predict
+
+# Generate predictions and create submission file
+predict()
+```
+
+```python Custom Paths
+import pandas as pd
+import joblib
+from data_pipeline import clean_data
+
+# Custom paths
+model = joblib.load('path/to/best_model.joblib')
+preprocessor = joblib.load('path/to/preprocessor.joblib')
+
+# Load and preprocess test data
+test_df = pd.read_csv('path/to/test.csv')
+ids = test_df['id']
+
+X_test = clean_data(test_df)
+X_test = X_test.drop('gender', axis=1, errors='ignore')
+
+# Transform and predict
+X_test_processed = preprocessor.transform(X_test)
+preds = model.predict(X_test_processed)
+
+# Map predictions back to original labels
+final_preds = [1 if p == 0 else 2 for p in preds]
+
+# Create submission
+submission = pd.DataFrame({
+    'id': ids,
+    'gender': final_preds
+})
+
+submission.to_csv('my_submission.csv', index=False)
+print("Predictions saved!")
+```
+
+```python With Probability Scores
+import pandas as pd
+import joblib
+from data_pipeline import clean_data
+
+# Load model and preprocessor
+model = joblib.load('best_model.joblib')
+preprocessor = joblib.load('preprocessor.joblib')
+
+# Load test data
+test_df = pd.read_csv('test.csv')
+ids = test_df['id']
+
+# Preprocess
+X_test = clean_data(test_df)
+X_test = X_test.drop('gender', axis=1, errors='ignore')
+X_test_processed = preprocessor.transform(X_test)
+
+# Get probability predictions
+proba = model.predict_proba(X_test_processed)
+
+# Get class predictions
+preds = model.predict(X_test_processed)
+final_preds = [1 if p == 0 else 2 for p in preds]
+
+# Create enhanced submission with confidence scores
+submission = pd.DataFrame({
+    'id': ids,
+    'gender': final_preds,
+    'prob_male': proba[:, 0],   # Probability of Male (class 0)
+    'prob_female': proba[:, 1]  # Probability of Female (class 1)
+})
+
+print(submission.head())
+```
+
+</CodeGroup>
+
+## Complete Working Example
+
+```python
+import pandas as pd
+import numpy as np
+import os
+import joblib
+from data_pipeline import clean_data
+
+# Configuration
+ROOT_DIR = "/home/gk/github/gk-work/DSML/IM5033-boy-or-girl-2026"
+TEST_DATA_PATH = os.path.join(ROOT_DIR, "data/boy-or-girl-2025-test-no-ans-missingValue.csv")
+MODEL_PATH = os.path.join(ROOT_DIR, "best_model.joblib")
+PREPROCESSOR_PATH = os.path.join(ROOT_DIR, "preprocessor.joblib")
+OUTPUT_PATH = os.path.join(ROOT_DIR, "submission.csv")
+
+# Step 1: Load trained artifacts
+print("Loading model and preprocessor...")
+model = joblib.load(MODEL_PATH)
+preprocessor = joblib.load(PREPROCESSOR_PATH)
+
+# Step 2: Load test data
+print("Loading test data...")
+test_df = pd.read_csv(TEST_DATA_PATH)
+print(f"Test data shape: {test_df.shape}")
+
+# Step 3: Extract IDs for submission
+ids = test_df['id']
+
+# Step 4: Clean and preprocess test data
+print("Preprocessing test data...")
+X_test = clean_data(test_df)
+X_test = X_test.drop('gender', axis=1, errors='ignore')
+X_test_processed = preprocessor.transform(X_test)
+print(f"Preprocessed test data shape: {X_test_processed.shape}")
+
+# Step 5: Generate predictions
+print("Generating predictions...")
+preds = model.predict(X_test_processed)
+
+# Step 6: Map predictions back to original labels
+# Model outputs: 0 (Male), 1 (Female)
+# Required format: 1 (Male), 2 (Female)
+final_preds = [1 if p == 0 else 2 for p in preds]
+
+# Step 7: Create submission DataFrame
+submission = pd.DataFrame({
+    'id': ids,
+    'gender': final_preds
+})
+
+# Step 8: Save submission file
+submission.to_csv(OUTPUT_PATH, index=False)
+print(f"Predictions saved to {OUTPUT_PATH}")
+
+# Display summary statistics
+print(f"\nPrediction Summary:")
+print(f"Total predictions: {len(final_preds)}")
+print(f"Male (1): {final_preds.count(1)}")
+print(f"Female (2): {final_preds.count(2)}")
+print(f"\nFirst 10 predictions:")
+print(submission.head(10))
+```
+
+## Label Mapping Reference
+
+The model uses binary encoding internally but the submission requires original labels:
+
+| Original Label | Description | Model Encoding | Submission Output |
+|---------------|-------------|----------------|-------------------|
+| 1 | Male | 0 | 1 |
+| 2 | Female | 1 | 2 |
+
+**Conversion Logic:**
+- Training: `gender.map({1: 0, 2: 1})` - converts original to model format
+- Prediction: `[1 if p == 0 else 2 for p in preds]` - converts model output to submission format
+
+## Error Handling
+
+```python
+import os
+import joblib
+
+def safe_predict(test_csv_path, model_path, preprocessor_path, output_path):
+    """Prediction with error handling"""
+    
+    # Check if required files exist
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model not found: {model_path}")
+    
+    if not os.path.exists(preprocessor_path):
+        raise FileNotFoundError(f"Preprocessor not found: {preprocessor_path}")
+    
+    if not os.path.exists(test_csv_path):
+        raise FileNotFoundError(f"Test data not found: {test_csv_path}")
+    
+    try:
+        # Load and predict
+        model = joblib.load(model_path)
+        preprocessor = joblib.load(preprocessor_path)
+        
+        test_df = pd.read_csv(test_csv_path)
+        ids = test_df['id']
+        
+        X_test = clean_data(test_df)
+        X_test = X_test.drop('gender', axis=1, errors='ignore')
+        X_test_processed = preprocessor.transform(X_test)
+        
+        preds = model.predict(X_test_processed)
+        final_preds = [1 if p == 0 else 2 for p in preds]
+        
+        submission = pd.DataFrame({'id': ids, 'gender': final_preds})
+        submission.to_csv(output_path, index=False)
+        
+        print(f"Success! Predictions saved to {output_path}")
+        return submission
+        
+    except Exception as e:
+        print(f"Error during prediction: {str(e)}")
+        raise
+```
+
+## Notes
+
+- **Preprocessor Required**: Always use the same preprocessor that was fitted during training
+- **Data Cleaning**: Test data must go through `clean_data()` before preprocessing
+- **Label Mapping**: Remember to convert model predictions (0/1) back to submission format (1/2)
+- **ID Column**: Ensure the `id` column is preserved for the submission file
+- **No Fitting**: Never call `fit()` on the preprocessor with test data - only use `transform()`

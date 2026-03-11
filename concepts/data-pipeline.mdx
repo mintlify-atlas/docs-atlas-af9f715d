@@ -1,0 +1,285 @@
+---
+title: 'Data Pipeline'
+description: 'Data cleaning, outlier detection, and preprocessing transformations'
+---
+
+## Pipeline Overview
+
+The data pipeline transforms raw, messy data into clean, model-ready features through a two-stage process:
+
+1. **Data Cleaning**: Remove outliers and handle data quality issues
+2. **Preprocessing**: Apply imputation, scaling, and encoding transformations
+
+<Info>
+The pipeline is implemented in `data_pipeline.py` using scikit-learn's Pipeline and ColumnTransformer abstractions.
+</Info>
+
+## Data Cleaning Function
+
+The `clean_data()` function handles the initial data quality issues before preprocessing.
+
+### Function Signature
+
+```python data_pipeline.py
+def clean_data(df):
+    """
+    Cleans raw data by handling extreme outliers and specific string errors.
+    """
+    df = df.copy()
+    # ... cleaning logic
+    return df
+```
+
+### Cleaning Steps
+
+<Steps>
+  <Step title="Convert to Numeric">
+    Convert all numeric columns to numeric type, coercing errors to NaN
+  </Step>
+  
+  <Step title="Remove Extreme Values">
+    Filter out values beyond ±1e12 to prevent numeric overflow
+  </Step>
+  
+  <Step title="Apply Business Rules">
+    Use domain-specific logic to detect outliers for each feature
+  </Step>
+  
+  <Step title="Feature Engineering">
+    Create derived features like self-introduction text length
+  </Step>
+</Steps>
+
+## Outlier Detection Logic
+
+The pipeline applies feature-specific outlier detection rules based on domain knowledge.
+
+<Accordion title="Height - Realistic Human Range">
+  
+**Valid Range**: 100 cm to 250 cm
+
+```python data_pipeline.py
+if col == 'height':
+    df.loc[(df[col] < 100) | (df[col] > 250), col] = np.nan
+```
+
+**Rationale**: Heights outside this range are physiologically implausible for adult humans and likely represent data entry errors.
+
+</Accordion>
+
+<Accordion title="Weight - Realistic Human Range">
+  
+**Valid Range**: 30 kg to 200 kg
+
+```python data_pipeline.py
+elif col == 'weight':
+    df.loc[(df[col] < 30) | (df[col] > 200), col] = np.nan
+```
+
+**Rationale**: Weights outside this range are unlikely for the target population and may indicate data quality issues.
+
+</Accordion>
+
+<Accordion title="YouTube Usage (yt) - Non-Negative Values">
+  
+**Valid Range**: >= 0
+
+```python data_pipeline.py
+elif col == 'yt':
+    df.loc[df[col] < 0, col] = np.nan
+```
+
+**Rationale**: YouTube usage cannot be negative. Negative values are replaced with NaN for imputation.
+
+</Accordion>
+
+<Accordion title="Sleepiness, IQ, FB Friends - Extreme Value Removal">
+  
+**Valid Range**: Within ±1e12
+
+```python data_pipeline.py
+# Replace extreme outliers/infinity with NaN before scaling
+df.loc[df[col] > 1e12, col] = np.nan
+df.loc[df[col] < -1e12, col] = np.nan
+```
+
+**Rationale**: These features only have extreme value filtering applied, with no specific business rules. The threshold prevents numeric overflow during scaling.
+
+</Accordion>
+
+### Complete Cleaning Implementation
+
+```python data_pipeline.py
+def clean_data(df):
+    """
+    Cleans raw data by handling extreme outliers and specific string errors.
+    """
+    df = df.copy()
+    
+    # List of numeric columns
+    numeric_cols = ['height', 'weight', 'sleepiness', 'iq', 'fb_friends', 'yt']
+    
+    for col in numeric_cols:
+        # Convert to numeric, turn errors like #NUM! or non-numeric strings to NaN
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Replace extreme outliers/infinity with NaN before scaling
+        # float32 max is ~3.4e38, so we use a much safer threshold
+        df.loc[df[col] > 1e12, col] = np.nan
+        df.loc[df[col] < -1e12, col] = np.nan
+        
+        # Specific business logic outlier handling
+        if col == 'height':
+            df.loc[(df[col] < 100) | (df[col] > 250), col] = np.nan
+        elif col == 'weight':
+            df.loc[(df[col] < 30) | (df[col] > 200), col] = np.nan
+        elif col == 'yt':
+            df.loc[df[col] < 0, col] = np.nan
+            
+    # Feature Engineering: length of self-intro
+    df['self_intro_len'] = df['self_intro'].fillna('').astype(str).apply(len)
+    
+    return df
+```
+
+## Feature Engineering
+
+### Self-Introduction Length
+
+A derived feature is created from the `self_intro` text field:
+
+```python data_pipeline.py
+df['self_intro_len'] = df['self_intro'].fillna('').astype(str).apply(len)
+```
+
+**Purpose**: Text length may correlate with gender-specific communication patterns. This numeric feature captures self-introduction verbosity.
+
+<Note>
+Missing self-intro values are filled with empty strings before calculating length, resulting in a length of 0.
+</Note>
+
+## Preprocessing Pipeline
+
+The `get_preprocessing_pipeline()` function creates a scikit-learn ColumnTransformer that handles numeric and categorical features separately.
+
+### Pipeline Architecture
+
+```python data_pipeline.py
+def get_preprocessing_pipeline():
+    """
+    Returns a scikit-learn ColumnTransformer for preprocessing.
+    """
+    numeric_features = ['height', 'weight', 'sleepiness', 'iq', 
+                       'fb_friends', 'yt', 'self_intro_len']
+    categorical_features = ['star_sign', 'phone_os']
+    
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
+    
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value='Unknown')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
+    
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
+        ]
+    )
+    
+    return preprocessor
+```
+
+### Feature Groups
+
+<Accordion title="Numeric Features (7 features)">
+
+**Features**: `height`, `weight`, `sleepiness`, `iq`, `fb_friends`, `yt`, `self_intro_len`
+
+**Transformation Pipeline**:
+1. **Imputation**: Missing values filled with the median of each feature
+2. **Scaling**: StandardScaler transforms features to zero mean and unit variance
+
+**Rationale**: Median imputation is robust to outliers. Scaling ensures features have comparable magnitudes for distance-based algorithms.
+
+```python
+numeric_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())
+])
+```
+
+</Accordion>
+
+<Accordion title="Categorical Features (2 features)">
+
+**Features**: `star_sign`, `phone_os`
+
+**Transformation Pipeline**:
+1. **Imputation**: Missing values filled with the constant value 'Unknown'
+2. **One-Hot Encoding**: Categorical values converted to binary indicator columns
+
+**Rationale**: Creates an 'Unknown' category for missing values. One-hot encoding allows tree-based and linear models to use categorical information.
+
+```python
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='constant', fill_value='Unknown')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore'))
+])
+```
+
+<Warning>
+`handle_unknown='ignore'` ensures that new categories in test data don't cause errors during prediction.
+</Warning>
+
+</Accordion>
+
+## Usage Example
+
+The pipeline is designed to be fit on training data and then applied to validation/test data:
+
+```python
+from data_pipeline import clean_data, get_preprocessing_pipeline
+
+# Load and clean data
+df = pd.read_csv("train.csv")
+df_clean = clean_data(df)
+
+# Separate features and target
+X = df_clean.drop('gender', axis=1)
+y = df_clean['gender']
+
+# Create and fit preprocessor
+preprocessor = get_preprocessing_pipeline()
+X_processed = preprocessor.fit_transform(X)
+
+# Transform test data (no fitting!)
+X_test_processed = preprocessor.transform(X_test)
+```
+
+<Info>
+Always call `fit_transform()` on training data and `transform()` on validation/test data to prevent data leakage.
+</Info>
+
+## Pipeline Benefits
+
+<CardGroup cols={2}>
+  <Card title="Reproducibility" icon="repeat">
+    The same transformations are applied consistently across train, validation, and test sets
+  </Card>
+  
+  <Card title="Modularity" icon="cube">
+    Cleaning and preprocessing logic is separated into reusable functions
+  </Card>
+  
+  <Card title="Robustness" icon="shield">
+    Handles missing values, outliers, and unseen categories gracefully
+  </Card>
+  
+  <Card title="Scikit-learn Compatible" icon="python">
+    Integrates seamlessly with scikit-learn model training workflows
+  </Card>
+</CardGroup>

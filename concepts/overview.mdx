@@ -1,0 +1,114 @@
+---
+title: 'Overview'
+description: 'Understanding the Boy or Girl Predictor machine learning project'
+---
+
+## The Problem
+
+The Boy or Girl Predictor is a binary classification problem that aims to predict gender based on a collection of demographic and behavioral features. This project was developed as part of a Kaggle competition challenge where participants must build a model that accurately predicts gender from anonymized respondent data.
+
+### Dataset Features
+
+The dataset includes a variety of features:
+- **Physical attributes**: height, weight
+- **Behavioral metrics**: sleepiness levels, YouTube usage (yt), Facebook friends count
+- **Cognitive measure**: IQ scores
+- **Categorical data**: star sign, phone operating system (iOS/Android)
+- **Text data**: self-introduction text
+
+<Note>
+All data was collected with respondent consent and contains no Personally Identifiable Information (PII).
+</Note>
+
+## Competition Context
+
+This project is based on an in-class Kaggle competition where:
+- Training data includes labeled gender information (1 = Male, 2 = Female)
+- Test data contains the same features but with zero-valued gender field
+- Evaluation metric: **ROC-AUC score**
+- Challenge: Handle missing values, outliers, and class imbalance
+
+## End-to-End Pipeline
+
+The complete machine learning pipeline consists of several integrated stages:
+
+<CardGroup cols={2}>
+  <Card title="Data Cleaning" icon="broom">
+    Remove outliers, handle extreme values, and fix data quality issues across numeric and categorical features
+  </Card>
+  
+  <Card title="Exploratory Analysis" icon="chart-line">
+    Analyze missingness patterns, feature distributions, and gender-based statistics to inform preprocessing
+  </Card>
+  
+  <Card title="Feature Engineering" icon="screwdriver-wrench">
+    Create derived features like self-intro length, apply imputation strategies, and encode categorical variables
+  </Card>
+  
+  <Card title="Model Training" icon="brain">
+    Train multiple classifiers (Logistic Regression, Random Forest, XGBoost) with class imbalance handling
+  </Card>
+</CardGroup>
+
+## Pipeline Architecture
+
+<Steps>
+  <Step title="Raw Data Ingestion">
+    Load the training dataset with missing values and potential data quality issues
+  </Step>
+  
+  <Step title="Data Cleaning">
+    Apply outlier detection and removal based on domain-specific business rules
+  </Step>
+  
+  <Step title="Preprocessing">
+    Execute separate transformation pipelines for numeric and categorical features
+  </Step>
+  
+  <Step title="Model Selection">
+    Train multiple models and select the best performer based on ROC-AUC score
+  </Step>
+  
+  <Step title="Prediction">
+    Apply the trained model to test data and generate predictions
+  </Step>
+</Steps>
+
+## Key Challenges
+
+### Missing Data
+The dataset contains missing values across multiple features, requiring robust imputation strategies:
+- **Numeric features**: Median imputation
+- **Categorical features**: Constant value imputation ('Unknown')
+
+### Outliers and Data Quality
+Several features contain extreme outliers or data errors (e.g., `#NUM!` strings, infinity values) that must be handled before modeling.
+
+### Class Imbalance
+The gender distribution may not be perfectly balanced, requiring techniques like:
+- `class_weight='balanced'` for Logistic Regression and Random Forest
+- `scale_pos_weight` for XGBoost
+
+<Warning>
+Extreme values beyond ±1e12 are automatically converted to NaN to prevent numeric overflow during preprocessing.
+</Warning>
+
+## Project Goals
+
+1. **Build a robust preprocessing pipeline** that handles missing data and outliers
+2. **Train multiple classification models** to find the best performer
+3. **Optimize for ROC-AUC** as the primary evaluation metric
+4. **Generate accurate predictions** on unseen test data
+5. **Document findings** through exploratory data analysis and missingness audits
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Data Pipeline" icon="pipe" href="/concepts/data-pipeline">
+    Learn about data cleaning and preprocessing steps
+  </Card>
+  
+  <Card title="Model Architecture" icon="diagram-project" href="/concepts/model-architecture">
+    Explore the machine learning models and training process
+  </Card>
+</CardGroup>

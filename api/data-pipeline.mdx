@@ -1,0 +1,209 @@
+---
+title: 'Data Pipeline'
+description: 'Data cleaning and preprocessing functions for the Boy or Girl Predictor'
+---
+
+## Overview
+
+The data pipeline module provides functions to clean raw data and create preprocessing pipelines for the ML model. It handles missing values, outliers, feature engineering, and data transformation.
+
+## Functions
+
+### clean_data()
+
+Cleans raw data by handling extreme outliers, invalid values, and performs feature engineering.
+
+```python
+def clean_data(df: pd.DataFrame) -> pd.DataFrame
+```
+
+<ParamField path="df" type="pd.DataFrame" required>
+  Raw input DataFrame containing the dataset with potential missing values, outliers, and data quality issues
+</ParamField>
+
+<ResponseField name="cleaned_df" type="pd.DataFrame">
+  Cleaned DataFrame with:
+  - Numeric columns converted to proper types
+  - Extreme outliers replaced with NaN
+  - Business logic validation applied
+  - Engineered feature `self_intro_len` added
+</ResponseField>
+
+#### Numeric Features Processed
+
+The function processes the following numeric columns:
+
+- `height` - Valid range: 100-250 cm
+- `weight` - Valid range: 30-200 kg
+- `sleepiness` - Extreme values (greater than 1e12 or less than -1e12) removed
+- `iq` - Extreme values (greater than 1e12 or less than -1e12) removed
+- `fb_friends` - Extreme values (greater than 1e12 or less than -1e12) removed
+- `yt` - Negative values set to NaN
+
+#### Feature Engineering
+
+<Expandable title="self_intro_len">
+Creates a new feature representing the character length of the `self_intro` column. Missing values are treated as empty strings.
+
+```python
+df['self_intro_len'] = df['self_intro'].fillna('').astype(str).apply(len)
+```
+</Expandable>
+
+#### Data Cleaning Logic
+
+1. **Type Conversion**: Converts all numeric columns using `pd.to_numeric()` with `errors='coerce'` to handle invalid entries like `#NUM!`
+2. **Extreme Value Removal**: Replaces values exceeding ±1e12 with NaN to prevent numerical issues
+3. **Domain-Specific Validation**: Applies business rules for physically plausible ranges
+4. **Feature Creation**: Adds `self_intro_len` as an additional predictor
+
+#### Usage Example
+
+```python
+import pandas as pd
+from data_pipeline import clean_data
+
+# Load raw data
+df = pd.read_csv('boy-or-girl-2025-train-missingValue.csv')
+
+# Clean the data
+cleaned_df = clean_data(df)
+
+print("Cleaned data shape:", cleaned_df.shape)
+print("Missing values:\n", cleaned_df.isnull().sum())
+```
+
+### get_preprocessing_pipeline()
+
+Returns a scikit-learn ColumnTransformer that handles imputation, scaling, and encoding.
+
+```python
+def get_preprocessing_pipeline() -> ColumnTransformer
+```
+
+<ResponseField name="preprocessor" type="sklearn.compose.ColumnTransformer">
+  A configured preprocessing pipeline with separate transformers for numeric and categorical features
+</ResponseField>
+
+#### Numeric Features
+
+The following numeric features are processed with median imputation and standard scaling:
+
+- `height`
+- `weight`
+- `sleepiness`
+- `iq`
+- `fb_friends`
+- `yt`
+- `self_intro_len` (engineered feature)
+
+**Transformations Applied:**
+1. `SimpleImputer(strategy='median')` - Fills missing values with column median
+2. `StandardScaler()` - Standardizes features to zero mean and unit variance
+
+#### Categorical Features
+
+The following categorical features are processed with constant imputation and one-hot encoding:
+
+- `star_sign`
+- `phone_os`
+
+**Transformations Applied:**
+1. `SimpleImputer(strategy='constant', fill_value='Unknown')` - Fills missing values with 'Unknown'
+2. `OneHotEncoder(handle_unknown='ignore')` - Creates binary columns for each category
+
+#### Pipeline Structure
+
+```python
+numeric_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())
+])
+
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='constant', fill_value='Unknown')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore'))
+])
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, numeric_features),
+        ('cat', categorical_transformer, categorical_features)
+    ]
+)
+```
+
+#### Usage Example
+
+<CodeGroup>
+
+```python Training
+from data_pipeline import clean_data, get_preprocessing_pipeline
+import pandas as pd
+
+# Load and clean data
+df = pd.read_csv('train.csv')
+df = clean_data(df)
+
+# Separate features and target
+X = df.drop('gender', axis=1)
+y = df['gender']
+
+# Get preprocessor and fit on training data
+preprocessor = get_preprocessing_pipeline()
+X_processed = preprocessor.fit_transform(X)
+
+print("Preprocessed features shape:", X_processed.shape)
+```
+
+```python Inference
+from data_pipeline import clean_data, get_preprocessing_pipeline
+import pandas as pd
+import joblib
+
+# Load preprocessor fitted during training
+preprocessor = joblib.load('preprocessor.joblib')
+
+# Load and clean test data
+test_df = pd.read_csv('test.csv')
+test_df = clean_data(test_df)
+X_test = test_df.drop('gender', axis=1, errors='ignore')
+
+# Transform test data (no fitting)
+X_test_processed = preprocessor.transform(X_test)
+```
+
+</CodeGroup>
+
+## Complete Example
+
+```python
+import pandas as pd
+from data_pipeline import clean_data, get_preprocessing_pipeline
+
+# Load raw data
+df = pd.read_csv('boy-or-girl-2025-train-missingValue.csv')
+
+# Step 1: Clean the data
+cleaned_df = clean_data(df)
+print("Cleaned data shape:", cleaned_df.shape)
+print("Missing values in cleaned data:\n", cleaned_df.isnull().sum())
+
+# Step 2: Get preprocessing pipeline
+preprocessor = get_preprocessing_pipeline()
+
+# Step 3: Prepare features and target
+X = cleaned_df.drop('gender', axis=1)
+y = cleaned_df['gender']
+
+# Step 4: Fit and transform
+X_processed = preprocessor.fit_transform(X)
+print("Preprocessed features shape:", X_processed.shape)
+```
+
+## Notes
+
+- The `gender` column should always be dropped from features before preprocessing
+- The preprocessor must be fitted on training data and saved for later use on test data
+- Missing values are handled automatically by the pipeline - do not drop rows with missing values
+- The `self_intro_len` feature is created during cleaning and automatically included in preprocessing

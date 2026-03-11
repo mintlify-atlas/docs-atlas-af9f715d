@@ -1,0 +1,264 @@
+---
+title: 'Model Evaluation'
+description: 'Understand evaluation metrics and interpret model performance'
+---
+
+## Overview
+
+Model evaluation uses multiple metrics to assess performance on the validation set. The best model is selected based on ROC-AUC score and saved for production use.
+
+## Evaluation Metrics
+
+Each model is evaluated using two primary metrics:
+
+### 1. Accuracy
+
+Proportion of correct predictions:
+
+```python train_model.py
+acc = accuracy_score(y_val, y_pred)
+print(f"  Accuracy: {acc:.4f}")
+```
+
+**Formula:** `(True Positives + True Negatives) / Total Predictions`
+
+<Note>
+  Accuracy alone can be misleading for imbalanced datasets. A model that always predicts "male" would achieve ~75% accuracy on this dataset.
+</Note>
+
+### 2. ROC-AUC Score
+
+Area Under the Receiver Operating Characteristic Curve:
+
+```python train_model.py
+auc = roc_auc_score(y_val, model.predict_proba(X_val_processed)[:, 1])
+print(f"  ROC-AUC: {auc:.4f}")
+```
+
+**Interpretation:**
+- **1.0** = Perfect classifier
+- **0.5** = Random guessing
+- **> 0.8** = Good performance
+- **> 0.9** = Excellent performance
+
+<Note>
+  ROC-AUC is the **primary metric** for model selection because it evaluates performance across all classification thresholds and is robust to class imbalance.
+</Note>
+
+## Classification Report
+
+Detailed per-class metrics are printed using scikit-learn's classification report:
+
+```python train_model.py
+print(classification_report(y_val, y_pred))
+```
+
+### Understanding the Output
+
+```
+              precision    recall  f1-score   support
+
+           0       0.85      0.90      0.87        63
+           1       0.71      0.64      0.67        22
+
+    accuracy                           0.80        85
+   macro avg       0.78      0.77      0.77        85
+weighted avg       0.80      0.80      0.80        85
+```
+
+**Metrics explained:**
+
+| Metric | Definition | Class 0 (Male) | Class 1 (Female) |
+|--------|-----------|----------------|------------------|
+| **Precision** | Of predicted positives, how many are correct? | 0.85 | 0.71 |
+| **Recall** | Of actual positives, how many were found? | 0.90 | 0.64 |
+| **F1-Score** | Harmonic mean of precision and recall | 0.87 | 0.67 |
+| **Support** | Number of samples in validation set | 63 | 22 |
+
+**Averages:**
+- **Macro avg**: Unweighted mean (treats classes equally)
+- **Weighted avg**: Weighted by class frequency
+
+<Warning>
+  Lower recall for Class 1 (female) indicates the model is more conservative in predicting the minority class. This is expected with imbalanced data but can be adjusted by tuning the classification threshold.
+</Warning>
+
+## Best Model Selection
+
+The model with the highest ROC-AUC is selected:
+
+```python train_model.py
+best_model = None
+best_score = 0
+results = {}
+
+for name, model in models.items():
+    # ... training and evaluation ...
+    
+    if auc > best_score:
+        best_score = auc
+        best_model = (name, model)
+
+print(f"\nBest Model: {best_model[0]} with ROC-AUC {best_score:.4f}")
+```
+
+**Selection criteria:**
+- **Primary**: Highest ROC-AUC score
+- **Rationale**: Best discriminative ability across thresholds
+- **Trade-off**: Balances precision and recall for both classes
+
+## Model Serialization
+
+The best model and preprocessor are saved using joblib:
+
+```python train_model.py
+model_save_path = os.path.join(root_dir, "best_model.joblib")
+preprocessor_save_path = os.path.join(root_dir, "preprocessor.joblib")
+
+joblib.dump(best_model[1], model_save_path)
+joblib.dump(preprocessor, preprocessor_save_path)
+
+print(f"\nModel saved to {model_save_path}")
+print(f"Preprocessor saved to {preprocessor_save_path}")
+```
+
+### Why Joblib?
+
+- **Efficient**: Optimized for large NumPy arrays
+- **Fast**: Faster than pickle for scikit-learn models
+- **Reliable**: Preserves model state perfectly
+
+<Note>
+  Always save both the model and preprocessor together. They must be used in tandem for prediction to ensure consistent feature transformation.
+</Note>
+
+## Loading Saved Models
+
+To use the trained model for prediction:
+
+```python
+import joblib
+import pandas as pd
+from data_pipeline import clean_data
+
+# Load saved artifacts
+model = joblib.load("best_model.joblib")
+preprocessor = joblib.load("preprocessor.joblib")
+
+# Prepare new data
+df_new = pd.read_csv("test_data.csv")
+df_new = clean_data(df_new)
+X_new = df_new.drop('gender', axis=1)  # or without gender column
+
+# Transform and predict
+X_new_processed = preprocessor.transform(X_new)
+predictions = model.predict(X_new_processed)
+probabilities = model.predict_proba(X_new_processed)
+
+# Map back to original labels
+# 0 -> 1 (Male), 1 -> 2 (Female)
+predictions_mapped = predictions + 1
+```
+
+## Evaluation Best Practices
+
+<AccordionGroup>
+  <Accordion title="Cross-validation for robust estimates">
+    The current implementation uses a single train/validation split. For more robust performance estimates, consider k-fold cross-validation:
+    
+    ```python
+    from sklearn.model_selection import cross_val_score
+    
+    cv_scores = cross_val_score(
+        model, X_train_processed, y_train,
+        cv=5, scoring='roc_auc'
+    )
+    print(f"Mean ROC-AUC: {cv_scores.mean():.4f} (+/- {cv_scores.std():.4f})")
+    ```
+  </Accordion>
+  
+  <Accordion title="Confusion matrix visualization">
+    Visualize prediction patterns:
+    
+    ```python
+    from sklearn.metrics import confusion_matrix
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    
+    cm = confusion_matrix(y_val, y_pred)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('Confusion Matrix')
+    plt.show()
+    ```
+  </Accordion>
+  
+  <Accordion title="Feature importance analysis">
+    For tree-based models (Random Forest, XGBoost), examine feature importance:
+    
+    ```python
+    if hasattr(best_model[1], 'feature_importances_'):
+        importances = best_model[1].feature_importances_
+        feature_names = preprocessor.get_feature_names_out()
+        
+        for name, importance in sorted(
+            zip(feature_names, importances),
+            key=lambda x: x[1],
+            reverse=True
+        )[:10]:
+            print(f"{name}: {importance:.4f}")
+    ```
+  </Accordion>
+  
+  <Accordion title="Threshold tuning for production">
+    The default classification threshold is 0.5. For production, you might want to tune this based on business requirements:
+    
+    ```python
+    from sklearn.metrics import precision_recall_curve
+    
+    # Get predicted probabilities
+    y_proba = model.predict_proba(X_val_processed)[:, 1]
+    
+    # Calculate precision and recall for different thresholds
+    precisions, recalls, thresholds = precision_recall_curve(y_val, y_proba)
+    
+    # Choose threshold that maximizes F1 score
+    f1_scores = 2 * (precisions * recalls) / (precisions + recalls)
+    optimal_idx = f1_scores.argmax()
+    optimal_threshold = thresholds[optimal_idx]
+    
+    print(f"Optimal threshold: {optimal_threshold:.4f}")
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Interpreting Results
+
+### Good Performance Indicators
+
+✅ ROC-AUC > 0.80  
+✅ Both classes have F1-score > 0.65  
+✅ Recall for minority class (female) > 0.60  
+✅ Small gap between train and validation performance
+
+### Warning Signs
+
+⚠️ Large gap between train/validation accuracy (overfitting)  
+⚠️ Very low recall for minority class (model ignoring females)  
+⚠️ ROC-AUC < 0.70 (poor discriminative ability)  
+⚠️ Accuracy high but ROC-AUC low (predicting majority class)
+
+## Next Steps
+
+After evaluation, you can:
+
+1. **Deploy the model** to production using the saved artifacts
+2. **Generate predictions** on test data for Kaggle submission
+3. **Iterate on features** by adding new engineered features
+4. **Tune hyperparameters** using GridSearchCV for better performance
+5. **Ensemble models** by combining predictions from multiple models
+
+<Note>
+  Document your best ROC-AUC score and model configuration for reproducibility and future comparisons.
+</Note>

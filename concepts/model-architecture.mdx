@@ -1,0 +1,351 @@
+---
+title: 'Model Architecture'
+description: 'Training multiple classifiers and selecting the best performer'
+---
+
+## Model Selection Strategy
+
+The project trains three different classification algorithms and selects the best performer based on **ROC-AUC score**:
+
+1. **Logistic Regression** - Linear baseline model
+2. **Random Forest** - Ensemble of decision trees
+3. **XGBoost** - Gradient boosted decision trees
+
+<Info>
+ROC-AUC is used as the primary evaluation metric because it measures the model's ability to distinguish between classes, which is crucial for binary classification.
+</Info>
+
+## Training Pipeline
+
+The training process follows a systematic approach defined in `train_model.py`:
+
+<Steps>
+  <Step title="Load and Clean Data">
+    Import raw data and apply the cleaning function from the data pipeline
+  </Step>
+  
+  <Step title="Target Encoding">
+    Map gender labels from {1, 2} to {0, 1} for model compatibility
+  </Step>
+  
+  <Step title="Train-Validation Split">
+    Split data 80/20 with stratification to maintain class proportions
+  </Step>
+  
+  <Step title="Preprocessing">
+    Fit preprocessing pipeline on training data and transform both sets
+  </Step>
+  
+  <Step title="Model Training">
+    Train all three models on the preprocessed training data
+  </Step>
+  
+  <Step title="Model Evaluation">
+    Evaluate each model on validation data using accuracy and ROC-AUC
+  </Step>
+  
+  <Step title="Best Model Selection">
+    Select the model with the highest ROC-AUC score
+  </Step>
+  
+  <Step title="Model Persistence">
+    Save the best model and preprocessor to disk using joblib
+  </Step>
+</Steps>
+
+## Model Configurations
+
+### Logistic Regression
+
+A linear model that predicts the log-odds of the target class.
+
+```python train_model.py
+LogisticRegression(class_weight='balanced', max_iter=1000)
+```
+
+**Key Hyperparameters**:
+- **`class_weight='balanced'`**: Automatically adjusts weights inversely proportional to class frequencies to handle imbalance
+- **`max_iter=1000`**: Increased iteration limit to ensure convergence
+
+**Strengths**:
+- Fast training and prediction
+- Interpretable coefficients
+- Works well as a baseline
+
+**Use Case**: Good baseline for linear relationships between features and target
+
+---
+
+### Random Forest
+
+An ensemble method that builds multiple decision trees and aggregates their predictions.
+
+```python train_model.py
+RandomForestClassifier(
+    class_weight='balanced', 
+    n_estimators=100, 
+    random_state=42
+)
+```
+
+**Key Hyperparameters**:
+- **`class_weight='balanced'`**: Handles class imbalance at the split level
+- **`n_estimators=100`**: Number of trees in the forest
+- **`random_state=42`**: Ensures reproducible results
+
+**Strengths**:
+- Handles non-linear relationships
+- Robust to outliers
+- Feature importance insights
+- Less prone to overfitting than single trees
+
+**Use Case**: Captures complex feature interactions and non-linear patterns
+
+---
+
+### XGBoost
+
+Gradient boosted decision trees with advanced optimization and regularization.
+
+```python train_model.py
+XGBClassifier(
+    scale_pos_weight=(len(y_train[y_train==0]) / len(y_train[y_train==1])), 
+    use_label_encoder=False, 
+    eval_metric='logloss', 
+    random_state=42
+)
+```
+
+**Key Hyperparameters**:
+- **`scale_pos_weight`**: Ratio of negative to positive class samples, handles imbalance
+- **`use_label_encoder=False`**: Disables deprecated label encoding
+- **`eval_metric='logloss'`**: Uses log loss for optimization
+- **`random_state=42`**: Ensures reproducibility
+
+**Strengths**:
+- State-of-the-art performance on tabular data
+- Built-in regularization
+- Handles missing values internally
+- Efficient implementation
+
+**Use Case**: Often achieves the best performance on structured data with complex patterns
+
+<Note>
+The `scale_pos_weight` parameter is dynamically calculated based on the actual class distribution in the training set.
+</Note>
+
+## Class Imbalance Handling
+
+All three models incorporate techniques to handle potential class imbalance:
+
+<Accordion title="Logistic Regression & Random Forest: class_weight='balanced'">
+
+**Mechanism**: Automatically adjusts the weight of each class inversely proportional to its frequency.
+
+**Formula**: 
+```
+weight_class_i = n_samples / (n_classes * n_samples_class_i)
+```
+
+**Effect**: 
+- Minority class samples receive higher weight during training
+- Model pays more attention to correctly classifying the minority class
+- Helps prevent bias toward the majority class
+
+</Accordion>
+
+<Accordion title="XGBoost: scale_pos_weight">
+
+**Mechanism**: Scales the gradient for the positive class by a specified factor.
+
+**Calculation**:
+```python
+scale_pos_weight = len(y_train[y_train==0]) / len(y_train[y_train==1])
+```
+
+**Effect**:
+- If there are more negative samples (male), positive class (female) gets upweighted
+- Balances the contribution of each class to the loss function
+- Equivalent to sample weighting but more efficient in XGBoost
+
+**Example**: If there are 600 males and 400 females, `scale_pos_weight = 600/400 = 1.5`
+
+</Accordion>
+
+## Training Code
+
+The complete training function demonstrates the full workflow:
+
+```python train_model.py
+def train():
+    # Load and clean data
+    df = pd.read_csv(data_path)
+    df = clean_data(df)
+    
+    X = df.drop('gender', axis=1)
+    y = df['gender'].map({1: 0, 2: 1})  # Mapping 1 to 0 (Male), 2 to 1 (Female)
+    
+    # Split data with stratification
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    
+    # Preprocess features
+    preprocessor = get_preprocessing_pipeline()
+    X_train_processed = preprocessor.fit_transform(X_train)
+    X_val_processed = preprocessor.transform(X_val)
+    
+    # Define models
+    models = {
+        'LogisticRegression': LogisticRegression(
+            class_weight='balanced', 
+            max_iter=1000
+        ),
+        'RandomForest': RandomForestClassifier(
+            class_weight='balanced', 
+            n_estimators=100, 
+            random_state=42
+        ),
+        'XGBoost': XGBClassifier(
+            scale_pos_weight=(len(y_train[y_train==0]) / len(y_train[y_train==1])), 
+            use_label_encoder=False, 
+            eval_metric='logloss', 
+            random_state=42
+        )
+    }
+    
+    best_model = None
+    best_score = 0
+    results = {}
+
+    # Train and evaluate each model
+    print("--- Model Evaluation ---")
+    for name, model in models.items():
+        model.fit(X_train_processed, y_train)
+        y_pred = model.predict(X_val_processed)
+        acc = accuracy_score(y_val, y_pred)
+        auc = roc_auc_score(y_val, model.predict_proba(X_val_processed)[:, 1])
+        
+        results[name] = {'Accuracy': acc, 'ROC-AUC': auc}
+        print(f"\n{name}:")
+        print(f"  Accuracy: {acc:.4f}")
+        print(f"  ROC-AUC: {auc:.4f}")
+        print(classification_report(y_val, y_pred))
+        
+        # Select best model based on ROC-AUC
+        if auc > best_score:
+            best_score = auc
+            best_model = (name, model)
+
+    print(f"\nBest Model: {best_model[0]} with ROC-AUC {best_score:.4f}")
+    
+    # Save artifacts
+    joblib.dump(best_model[1], "best_model.joblib")
+    joblib.dump(preprocessor, "preprocessor.joblib")
+```
+
+## Evaluation Metrics
+
+The training process reports multiple metrics for each model:
+
+<CardGroup cols={2}>
+  <Card title="Accuracy" icon="bullseye">
+    Percentage of correct predictions (both classes)
+  </Card>
+  
+  <Card title="ROC-AUC Score" icon="chart-line">
+    Area under the ROC curve - measures class separation ability
+  </Card>
+  
+  <Card title="Classification Report" icon="table">
+    Precision, recall, and F1-score for each class
+  </Card>
+  
+  <Card title="Best Model Selection" icon="trophy">
+    Model with highest ROC-AUC is selected and saved
+  </Card>
+</CardGroup>
+
+### Why ROC-AUC?
+
+<Accordion title="Advantages of ROC-AUC for Model Selection">
+
+**1. Threshold-Independent**: Evaluates model performance across all classification thresholds, not just the default 0.5
+
+**2. Class Imbalance Robust**: Works well even when classes are imbalanced, unlike accuracy
+
+**3. Probabilistic Interpretation**: Measures the probability that the model ranks a random positive sample higher than a random negative sample
+
+**4. Competition Metric**: Often used in Kaggle competitions for binary classification
+
+**5. Clinical Interpretation**: A score of 0.5 is random guessing, 1.0 is perfect separation
+
+</Accordion>
+
+## Model Persistence
+
+After training, the best model and preprocessor are saved for later use:
+
+```python train_model.py
+# Save the best model and preprocessor
+model_save_path = os.path.join(root_dir, "best_model.joblib")
+preprocessor_save_path = os.path.join(root_dir, "preprocessor.joblib")
+
+joblib.dump(best_model[1], model_save_path)
+joblib.dump(preprocessor, preprocessor_save_path)
+```
+
+<Warning>
+Both the model AND the preprocessor must be saved together. The preprocessor contains the fitted imputation and scaling parameters from the training data.
+</Warning>
+
+## Making Predictions
+
+To use the trained model on new data:
+
+```python
+import joblib
+from data_pipeline import clean_data
+
+# Load saved artifacts
+model = joblib.load("best_model.joblib")
+preprocessor = joblib.load("preprocessor.joblib")
+
+# Prepare test data
+test_df = pd.read_csv("test.csv")
+test_df = clean_data(test_df)
+
+# Transform and predict
+X_test = test_df.drop('gender', axis=1)  # gender column is zero-valued in test
+X_test_processed = preprocessor.transform(X_test)
+predictions = model.predict(X_test_processed)
+
+# Map back to original labels: 0 -> 1 (Male), 1 -> 2 (Female)
+final_predictions = [1 if p == 0 else 2 for p in predictions]
+```
+
+## Model Comparison
+
+The training script outputs a comprehensive comparison:
+
+```
+--- Model Evaluation ---
+
+LogisticRegression:
+  Accuracy: 0.7245
+  ROC-AUC: 0.7891
+  
+RandomForest:
+  Accuracy: 0.7456
+  ROC-AUC: 0.8123
+  
+XGBoost:
+  Accuracy: 0.7523
+  ROC-AUC: 0.8247
+
+Best Model: XGBoost with ROC-AUC 0.8247
+```
+
+<Note>
+The actual performance numbers will vary based on the specific data split and class distribution in your training set.
+</Note>

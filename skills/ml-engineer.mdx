@@ -1,0 +1,383 @@
+---
+title: 'ML Engineer Skill'
+description: 'Dockerization, API wrapping, and model monitoring expert'
+---
+
+## Overview
+
+**Name**: `ml-engineer`  
+**Risk Level**: High  
+**Version**: 1.0.0
+
+The ML Engineer skill focuses on production deployment of machine learning models. It specializes in Dockerization, API wrapping with FastAPI, model monitoring, and production-readiness concerns.
+
+<Warning>
+  **High Risk**: This skill affects production systems and deployment infrastructure. Always review deployment configurations carefully.
+</Warning>
+
+## When to Use This Skill
+
+Invoke `@ml-engineer` when you need:
+
+- Wrap models in REST APIs (FastAPI)
+- Dockerize ML applications
+- Set up model monitoring and logging
+- Create health check endpoints
+- Implement model serialization strategies
+- Production deployment preparation
+- Latency and performance optimization
+- Error handling for production systems
+
+## Core Principles
+
+### 1. Safety First
+
+**Every model must be wrapped in a `try-except` block.**
+
+```python
+@app.post("/predict")
+async def predict(data: PredictionRequest):
+    try:
+        prediction = model.predict(data.features)
+        return {"prediction": prediction}
+    except Exception as e:
+        logger.error(f"Prediction error: {e}")
+        raise HTTPException(status_code=500, detail="Prediction failed")
+```
+
+**Why**: Production systems must gracefully handle errors without crashing.
+
+### 2. Serialization Standards
+
+Use appropriate serialization formats:
+
+- **Scikit-learn models**: Use `joblib`
+  ```python
+  import joblib
+  joblib.dump(model, 'model.pkl')
+  model = joblib.load('model.pkl')
+  ```
+
+- **Deep Learning models**: Use `safetensors`
+  ```python
+  from safetensors.torch import save_file, load_file
+  save_file(model.state_dict(), 'model.safetensors')
+  ```
+
+<Note>
+  `safetensors` is preferred over pickle for deep learning because it's more secure and prevents arbitrary code execution.
+</Note>
+
+### 3. Monitoring Requirements
+
+**Every production model must include**:
+
+1. **Health Check Endpoint**: Basic service availability
+2. **Prometheus-style Logging**: Track latency, throughput, errors
+3. **Prediction Logging**: Store predictions for monitoring drift
+
+## FastAPI Model Serving
+
+### Basic Structure
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import joblib
+import logging
+import time
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load model
+model = joblib.load('model.pkl')
+
+app = FastAPI(title="Gender Prediction API")
+
+class PredictionRequest(BaseModel):
+    hair_length: float
+    favorite_color: str
+    weight: float
+
+class PredictionResponse(BaseModel):
+    prediction: str
+    probability: float
+    latency_ms: float
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "model_loaded": model is not None}
+
+@app.post("/predict", response_model=PredictionResponse)
+async def predict(request: PredictionRequest):
+    start_time = time.time()
+    
+    try:
+        # Prepare features
+        features = [[request.hair_length, request.weight]]
+        
+        # Make prediction
+        prediction = model.predict(features)[0]
+        probability = model.predict_proba(features)[0].max()
+        
+        latency = (time.time() - start_time) * 1000
+        
+        logger.info(f"Prediction: {prediction}, Latency: {latency:.2f}ms")
+        
+        return PredictionResponse(
+            prediction=prediction,
+            probability=float(probability),
+            latency_ms=latency
+        )
+    except Exception as e:
+        logger.error(f"Prediction failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+### Key Components
+
+1. **Pydantic Models**: Type validation for requests/responses
+2. **Error Handling**: Try-except with proper HTTP status codes
+3. **Logging**: Track predictions and errors
+4. **Latency Tracking**: Monitor performance
+5. **Health Endpoint**: Service availability check
+
+## Dockerization
+
+### Dockerfile Template
+
+```dockerfile
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy model and code
+COPY model.pkl .
+COPY app.py .
+
+# Expose port
+EXPOSE 8000
+
+# Run application
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+### Docker Compose for Development
+
+```yaml
+version: '3.8'
+
+services:
+  ml-api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MODEL_PATH=/app/model.pkl
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+```
+
+## Monitoring Setup
+
+### Prometheus Metrics
+
+```python
+from prometheus_client import Counter, Histogram, make_asgi_app
+from fastapi import FastAPI
+
+# Metrics
+prediction_counter = Counter(
+    'predictions_total', 
+    'Total number of predictions'
+)
+prediction_latency = Histogram(
+    'prediction_latency_seconds',
+    'Prediction latency in seconds'
+)
+error_counter = Counter(
+    'prediction_errors_total',
+    'Total number of prediction errors'
+)
+
+app = FastAPI()
+
+# Add prometheus metrics endpoint
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+
+@app.post("/predict")
+async def predict(request: PredictionRequest):
+    with prediction_latency.time():
+        try:
+            prediction = model.predict([request.features])
+            prediction_counter.inc()
+            return {"prediction": prediction}
+        except Exception as e:
+            error_counter.inc()
+            raise HTTPException(status_code=500, detail=str(e))
+```
+
+## Example Invocations
+
+### API Creation
+
+```
+@ml-engineer create a FastAPI endpoint for the gender prediction model
+```
+
+### Dockerization
+
+```
+@ml-engineer dockerize the model serving application with proper 
+health checks and monitoring
+```
+
+### Production Readiness
+
+```
+@ml-engineer review the current deployment setup and add missing 
+production safeguards
+```
+
+### Monitoring Setup
+
+```
+@ml-engineer add Prometheus metrics and logging to the API
+```
+
+## Best Practices
+
+<Tip>
+  **Separate Model from API**: Load the model once at startup, not on every request. This significantly reduces latency.
+</Tip>
+
+<Tip>
+  **Use Environment Variables**: Don't hardcode paths or configuration. Use environment variables for flexibility.
+</Tip>
+
+<Tip>
+  **Version Your APIs**: Use API versioning (e.g., `/v1/predict`) to allow backward compatibility when updating models.
+</Tip>
+
+<Warning>
+  Always validate input data with Pydantic models. Never trust user input directly.
+</Warning>
+
+<Warning>
+  Set request timeouts to prevent hanging requests from consuming resources.
+</Warning>
+
+## Production Checklist
+
+Before deploying, verify:
+
+- [ ] Model is wrapped in try-except
+- [ ] Health check endpoint exists and works
+- [ ] Logging is configured properly
+- [ ] Pydantic models validate all inputs
+- [ ] Proper error messages (no stack traces to users)
+- [ ] Latency is tracked
+- [ ] Docker image builds successfully
+- [ ] Environment variables are documented
+- [ ] Model file is included in Docker image
+- [ ] API has rate limiting (if needed)
+- [ ] Monitoring/metrics endpoint exists
+- [ ] Load testing completed
+
+## Common Patterns
+
+### Model Loading with Fallback
+
+```python
+import os
+import joblib
+from pathlib import Path
+
+def load_model(model_path: str = None):
+    if model_path is None:
+        model_path = os.getenv('MODEL_PATH', 'model.pkl')
+    
+    if not Path(model_path).exists():
+        raise FileNotFoundError(f"Model not found at {model_path}")
+    
+    try:
+        model = joblib.load(model_path)
+        logger.info(f"Model loaded from {model_path}")
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load model: {e}")
+        raise
+```
+
+### Request Validation
+
+```python
+from pydantic import BaseModel, validator
+
+class PredictionRequest(BaseModel):
+    hair_length: float
+    weight: float
+    
+    @validator('hair_length')
+    def hair_length_must_be_positive(cls, v):
+        if v < 0:
+            raise ValueError('hair_length must be positive')
+        return v
+    
+    @validator('weight')
+    def weight_must_be_reasonable(cls, v):
+        if v < 0 or v > 300:
+            raise ValueError('weight must be between 0 and 300 kg')
+        return v
+```
+
+### Graceful Shutdown
+
+```python
+import signal
+import sys
+
+def signal_handler(sig, frame):
+    logger.info('Shutting down gracefully...')
+    # Save any pending data, close connections, etc.
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+```
+
+## Integration with Implementation Playbook
+
+The ML Engineer skill follows [Implementation Playbook](/skills/implementation-playbook) standards:
+
+- **Error Handling**: Custom exceptions, no bare except
+- **Logging**: Using `logging` library, not print statements
+- **Type Hints**: All functions have type annotations
+- **Documentation**: Docstrings for all public functions
+- **Reproducibility**: Environment.txt or pyproject.toml included
+
+## Key Constraints
+
+- Must wrap all predictions in try-except
+- Must include /health endpoint
+- Must use joblib for sklearn, safetensors for DL
+- Must implement monitoring/logging
+- Must validate inputs with Pydantic
+- Must handle errors gracefully
+- Must track latency
+
+## Related Skills
+
+- [Data Scientist](/skills/data-scientist) - Creates the models to deploy
+- [Model Trainer](/skills/model-trainer) - Produces optimized models for production
+- [Implementation Playbook](/skills/implementation-playbook) - Engineering standards
+- [Model Pipeline](/skills/model-pipeline) - See deployment in full workflow

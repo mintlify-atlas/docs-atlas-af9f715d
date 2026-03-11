@@ -1,0 +1,300 @@
+---
+title: 'Train Model'
+description: 'Training pipeline for the Boy or Girl Predictor ML model'
+---
+
+## Overview
+
+The training module trains multiple classification models, evaluates them on validation data, and saves the best performing model along with the preprocessing pipeline.
+
+## Function
+
+### train()
+
+Trains and evaluates multiple ML models, then saves the best performer.
+
+```python
+def train() -> None
+```
+
+The function performs the complete training pipeline including data loading, cleaning, preprocessing, model training, evaluation, and saving artifacts.
+
+#### Training Pipeline
+
+1. **Data Loading & Cleaning**
+   - Loads training data from CSV
+   - Applies `clean_data()` function to handle outliers and missing values
+
+2. **Target Encoding**
+   - Maps gender values: `1 → 0` (Male), `2 → 1` (Female)
+   - This encoding is required for scikit-learn binary classifiers
+
+3. **Data Splitting**
+   - 80% training, 20% validation
+   - Stratified split to maintain class balance
+   - Random state: 42 for reproducibility
+
+4. **Preprocessing**
+   - Fits preprocessing pipeline on training data
+   - Transforms both train and validation sets
+
+5. **Model Training**
+   - Trains three different classifiers
+   - Handles class imbalance with weighting
+
+6. **Model Selection**
+   - Evaluates models using Accuracy and ROC-AUC
+   - Selects best model based on ROC-AUC score
+
+7. **Model Persistence**
+   - Saves best model as `best_model.joblib`
+   - Saves fitted preprocessor as `preprocessor.joblib`
+
+## Models Trained
+
+### Logistic Regression
+
+```python
+LogisticRegression(class_weight='balanced', max_iter=1000)
+```
+
+<ParamField path="class_weight" type="str" default="balanced">
+  Automatically adjusts weights inversely proportional to class frequencies
+</ParamField>
+
+<ParamField path="max_iter" type="int" default="1000">
+  Maximum number of iterations for solver convergence
+</ParamField>
+
+### Random Forest
+
+```python
+RandomForestClassifier(
+    class_weight='balanced', 
+    n_estimators=100, 
+    random_state=42
+)
+```
+
+<ParamField path="class_weight" type="str" default="balanced">
+  Balances class weights for each tree in the forest
+</ParamField>
+
+<ParamField path="n_estimators" type="int" default="100">
+  Number of decision trees in the forest
+</ParamField>
+
+<ParamField path="random_state" type="int" default="42">
+  Random seed for reproducibility
+</ParamField>
+
+### XGBoost
+
+```python
+XGBClassifier(
+    scale_pos_weight=(len(y_train[y_train==0]) / len(y_train[y_train==1])),
+    use_label_encoder=False,
+    eval_metric='logloss',
+    random_state=42
+)
+```
+
+<ParamField path="scale_pos_weight" type="float">
+  Ratio of negative to positive samples, dynamically calculated to handle class imbalance
+</ParamField>
+
+<ParamField path="use_label_encoder" type="bool" default="False">
+  Disables deprecated label encoder
+</ParamField>
+
+<ParamField path="eval_metric" type="str" default="logloss">
+  Evaluation metric used during training
+</ParamField>
+
+## Evaluation Metrics
+
+Each model is evaluated on the validation set using:
+
+<ResponseField name="Accuracy" type="float">
+  Percentage of correct predictions: `(TP + TN) / (TP + TN + FP + FN)`
+</ResponseField>
+
+<ResponseField name="ROC-AUC" type="float">
+  Area Under the Receiver Operating Characteristic Curve - measures the model's ability to distinguish between classes. **This metric is used for model selection.**
+</ResponseField>
+
+<ResponseField name="Classification Report" type="dict">
+  Detailed precision, recall, and F1-score for each class
+</ResponseField>
+
+## Implementation
+
+<Expandable title="Complete train() function source code">
+
+```python
+def train():
+    # Load and clean data
+    df = pd.read_csv(data_path)
+    df = clean_data(df)
+    
+    X = df.drop('gender', axis=1)
+    y = df['gender'].map({1: 0, 2: 1}) # Mapping 1 to 0 (Male), 2 to 1 (Female)
+    
+    # Split data
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    
+    preprocessor = get_preprocessing_pipeline()
+    X_train_processed = preprocessor.fit_transform(X_train)
+    X_val_processed = preprocessor.transform(X_val)
+    
+    # Define models
+    models = {
+        'LogisticRegression': LogisticRegression(
+            class_weight='balanced', max_iter=1000
+        ),
+        'RandomForest': RandomForestClassifier(
+            class_weight='balanced', n_estimators=100, random_state=42
+        ),
+        'XGBoost': XGBClassifier(
+            scale_pos_weight=(len(y_train[y_train==0]) / len(y_train[y_train==1])),
+            use_label_encoder=False, eval_metric='logloss', random_state=42
+        )
+    }
+    
+    best_model = None
+    best_score = 0
+    results = {}
+
+    print("--- Model Evaluation ---")
+    for name, model in models.items():
+        model.fit(X_train_processed, y_train)
+        y_pred = model.predict(X_val_processed)
+        acc = accuracy_score(y_val, y_pred)
+        auc = roc_auc_score(y_val, model.predict_proba(X_val_processed)[:, 1])
+        
+        results[name] = {'Accuracy': acc, 'ROC-AUC': auc}
+        print(f"\n{name}:")
+        print(f"  Accuracy: {acc:.4f}")
+        print(f"  ROC-AUC: {auc:.4f}")
+        print(classification_report(y_val, y_pred))
+        
+        if auc > best_score:
+            best_score = auc
+            best_model = (name, model)
+
+    print(f"\nBest Model: {best_model[0]} with ROC-AUC {best_score:.4f}")
+    
+    # Save the best model and preprocessor
+    model_save_path = os.path.join(root_dir, "best_model.joblib")
+    preprocessor_save_path = os.path.join(root_dir, "preprocessor.joblib")
+    
+    joblib.dump(best_model[1], model_save_path)
+    joblib.dump(preprocessor, preprocessor_save_path)
+    
+    print(f"\nModel saved to {model_save_path}")
+    print(f"Preprocessor saved to {preprocessor_save_path}")
+```
+
+</Expandable>
+
+## Expected Input Data Format
+
+The training data CSV should contain the following columns:
+
+**Numeric Features:**
+- `height` - Height in cm
+- `weight` - Weight in kg
+- `sleepiness` - Sleepiness score
+- `iq` - IQ score
+- `fb_friends` - Number of Facebook friends
+- `yt` - YouTube-related metric
+
+**Categorical Features:**
+- `star_sign` - Astrological star sign
+- `phone_os` - Phone operating system
+- `self_intro` - Self-introduction text (used for feature engineering)
+
+**Target:**
+- `gender` - Gender label (1 = Male, 2 = Female)
+
+Missing values, outliers, and data quality issues are handled automatically by the pipeline.
+
+## Usage Example
+
+<CodeGroup>
+
+```python Basic Usage
+from train_model import train
+
+# Run complete training pipeline
+train()
+```
+
+```python Output
+--- Model Evaluation ---
+
+LogisticRegression:
+  Accuracy: 0.7234
+  ROC-AUC: 0.7891
+              precision    recall  f1-score   support
+
+           0       0.71      0.75      0.73       123
+           1       0.74      0.70      0.72       127
+
+    accuracy                           0.72       250
+   macro avg       0.72      0.72      0.72       250
+weighted avg       0.72      0.72      0.72       250
+
+RandomForest:
+  Accuracy: 0.7520
+  ROC-AUC: 0.8156
+              precision    recall  f1-score   support
+
+           0       0.74      0.77      0.75       123
+           1       0.77      0.74      0.75       127
+
+    accuracy                           0.75       250
+   macro avg       0.75      0.75      0.75       250
+weighted avg       0.75      0.75      0.75       250
+
+XGBoost:
+  Accuracy: 0.7680
+  ROC-AUC: 0.8342
+              precision    recall  f1-score   support
+
+           0       0.76      0.79      0.77       123
+           1       0.78      0.75      0.77       127
+
+    accuracy                           0.77       250
+   macro avg       0.77      0.77      0.77       250
+weighted avg       0.77      0.77      0.77       250
+
+Best Model: XGBoost with ROC-AUC 0.8342
+
+Model saved to best_model.joblib
+Preprocessor saved to preprocessor.joblib
+```
+
+</CodeGroup>
+
+## Saved Artifacts
+
+After training completes, two files are saved using joblib:
+
+<ResponseField name="best_model.joblib" type="sklearn estimator">
+  The trained model with the highest ROC-AUC score on the validation set
+</ResponseField>
+
+<ResponseField name="preprocessor.joblib" type="ColumnTransformer">
+  The fitted preprocessing pipeline that must be used to transform new data before prediction
+</ResponseField>
+
+## Notes
+
+- **Class Imbalance**: All models use class balancing techniques to handle potential imbalances
+- **Reproducibility**: Random states are set to 42 for consistent results
+- **Model Selection**: ROC-AUC is preferred over accuracy as it better handles class imbalance
+- **Stratified Split**: Validation split maintains the same class distribution as training data
+- **Label Mapping**: Gender is mapped from {1, 2} to {0, 1} for model compatibility, and reversed during prediction

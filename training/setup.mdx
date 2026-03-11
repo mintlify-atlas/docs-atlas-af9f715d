@@ -1,0 +1,108 @@
+---
+title: 'Training Setup'
+description: 'Set up your environment for training the Boy or Girl predictor model'
+---
+
+## Overview
+
+This guide walks you through setting up the training environment for the Boy or Girl predictor model, including installing dependencies, downloading the dataset, and configuring the directory structure.
+
+## Prerequisites
+
+- Python 3.8 or higher
+- pip package manager
+- Kaggle account (for dataset download)
+- 2GB free disk space
+
+## Environment Setup
+
+<Steps>
+  <Step title="Clone or create project directory">
+    Create your project root directory:
+    
+    ```bash
+    mkdir boy-or-girl-predictor
+    cd boy-or-girl-predictor
+    ```
+  </Step>
+
+  <Step title="Install required dependencies">
+    Install all required packages from requirements.txt:
+    
+    ```bash
+    pip install -r requirements.txt
+    ```
+    
+    **Key dependencies:**
+    - `scikit-learn==1.8.0` - ML algorithms and preprocessing
+    - `xgboost==3.2.0` - Gradient boosting models
+    - `pandas==3.0.1` - Data manipulation
+    - `numpy==2.4.2` - Numerical computations
+    - `joblib==1.5.3` - Model serialization
+    - `matplotlib==3.10.8` & `seaborn==0.13.2` - Visualization
+  </Step>
+
+  <Step title="Download the dataset">
+    The dataset is from the **boy-or-girl-2025** Kaggle competition.
+    
+    <Note>
+      You'll need a Kaggle account and API credentials configured to download the dataset.
+    </Note>
+    
+    Download using Kaggle CLI:
+    
+    ```bash
+    kaggle competitions download -c boy-or-girl-2025
+    unzip boy-or-girl-2025.zip -d data/
+    ```
+    
+    Or manually download from the competition page and place in the `data/` directory.
+  </Step>
+
+  <Step title="Set up directory structure">
+    Create the required directory structure:
+    
+    ```bash
+    mkdir -p data/
+    mkdir -p models/
+    ```
+    
+    Your project structure should look like:
+    
+    ```
+    boy-or-girl-predictor/
+    ├── data/
+    │   └── boy-or-girl-2025-train-missingValue.csv
+    ├── models/
+    ├── train_model.py
+    ├── data_pipeline.py
+    ├── requirements.txt
+    ├── best_model.joblib (generated after training)
+    └── preprocessor.joblib (generated after training)
+    ```
+  </Step>
+
+  <Step title="Update data path in scripts">
+    Open `train_model.py` and update the `root_dir` variable to your project path:
+    
+    ```python train_model.py
+    # Root directory
+    root_dir = "/path/to/your/boy-or-girl-predictor"
+    data_path = os.path.join(root_dir, "data/boy-or-girl-2025-train-missingValue.csv")
+    ```
+    
+    Do the same in `data_pipeline.py` if you plan to test it independently.
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Test that all dependencies are correctly installed:
+
+```bash
+python -c "import sklearn, xgboost, pandas, numpy; print('All dependencies installed successfully!')"
+```
+
+## Next Steps
+
+Once your environment is set up, proceed to [Data Preparation](/training/data-preparation) to learn how to clean and prepare the dataset for training.
