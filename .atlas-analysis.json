@@ -1,0 +1,83 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "Boy or Girl Predictor",
+  "projectDescription": "A machine learning project for gender prediction using demographic and behavioral features with XGBoost, Random Forest, and Logistic Regression models.",
+  "theme": "palm",
+  "primaryColor": "#b38135",
+  "lightColor": "#dad6d3",
+  "darkColor": "#448ce0",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": ["concepts/overview", "concepts/data-pipeline", "concepts/model-architecture"]
+          },
+          {
+            "group": "Training Guide",
+            "pages": ["training/setup", "training/data-preparation", "training/model-training", "training/evaluation"]
+          },
+          {
+            "group": "Inference",
+            "pages": ["inference/prediction", "inference/submission"]
+          }
+        ]
+      },
+      {
+        "tab": "Agent Skills",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["skills/overview"]
+          },
+          {
+            "group": "Data Science Skills",
+            "pages": ["skills/data-scientist", "skills/data-cleaner", "skills/researcher"]
+          },
+          {
+            "group": "ML Engineering",
+            "pages": ["skills/ml-engineer", "skills/model-trainer"]
+          },
+          {
+            "group": "Resources",
+            "pages": ["skills/implementation-playbook", "skills/model-pipeline"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Functions",
+            "pages": ["api/data-pipeline", "api/train-model", "api/predict"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automated data cleaning and outlier detection",
+    "Multi-model comparison (LogisticRegression, RandomForest, XGBoost)",
+    "Preprocessing pipeline with feature engineering",
+    "ROC-AUC based model selection",
+    "Agent-based workflow with specialized skills",
+    "Kaggle competition submission generation"
+  ],
+  "publicApiSurface": [
+    "clean_data(df)",
+    "get_preprocessing_pipeline()",
+    "train()",
+    "predict()",
+    "@data-scientist skill",
+    "@ds-data-cleaner skill",
+    "@ml-model-trainer skill",
+    "@ml-engineer skill",
+    "@ds-researcher skill"
+  ]
+}
